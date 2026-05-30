@@ -3,6 +3,7 @@ const STORAGE_KEY = "sinego-care-state-v1";
 const tabs = [
   { id: "dashboard", label: "홈" },
   { id: "fluid", label: "수액" },
+  { id: "medication", label: "투약" },
   { id: "nutrition", label: "영양" },
   { id: "weight", label: "체중" },
   { id: "resources", label: "자료" },
@@ -165,6 +166,8 @@ function defaultState() {
     cats: [],
     fluidPlans: [],
     fluidLogs: [],
+    medicationPlans: [],
+    medicationLogs: [],
     weightLogs: [],
     customFoods: [],
     customResources: [],
@@ -189,6 +192,8 @@ function loadState() {
       cats: Array.isArray(saved.cats) ? saved.cats : [],
       fluidPlans: Array.isArray(saved.fluidPlans) ? saved.fluidPlans : [],
       fluidLogs: Array.isArray(saved.fluidLogs) ? saved.fluidLogs : [],
+      medicationPlans: Array.isArray(saved.medicationPlans) ? saved.medicationPlans : [],
+      medicationLogs: Array.isArray(saved.medicationLogs) ? saved.medicationLogs : [],
       weightLogs: Array.isArray(saved.weightLogs) ? saved.weightLogs : [],
       customFoods: Array.isArray(saved.customFoods) ? saved.customFoods : [],
       customResources: Array.isArray(saved.customResources) ? saved.customResources : [],
@@ -260,6 +265,7 @@ function renderHeader() {
 
 function renderView(active) {
   if (active === "fluid") return renderFluidView();
+  if (active === "medication") return renderMedicationView();
   if (active === "nutrition") return renderNutritionView();
   if (active === "weight") return renderWeightView();
   if (active === "resources") return renderResourcesView();
@@ -271,14 +277,14 @@ function renderDashboardView() {
   const user = currentUser();
   const activeCat = getActiveCat();
   const calorie = activeCat ? calorieProfile(activeCat) : null;
-  const upcoming = user ? getUpcomingOccurrences({ limit: 4 }) : [];
+  const upcoming = user ? getUpcomingCareOccurrences({ limit: 5 }) : [];
   const lastWeight = getActiveCatWeightLogs().at(-1);
 
   return `
     <section class="view-title">
       <div>
         <h1>오늘의 케어</h1>
-        <p>수액, 식사, 체중 기록을 한 화면에서 확인합니다.</p>
+        <p>수액, 투약·영양제, 식사, 체중 기록을 한 화면에서 확인합니다.</p>
       </div>
       <div class="actions">
         <button class="btn secondary" data-action="export-data">내 데이터 내보내기</button>
@@ -299,9 +305,9 @@ function renderDashboardView() {
         <div class="metric-note">${calorie ? `권장 범위 ${formatNumber(calorie.low)}-${formatNumber(calorie.high)} kcal` : "체중이 필요합니다"}</div>
       </div>
       <div class="metric warn">
-        <div class="metric-label">다가오는 수액</div>
+        <div class="metric-label">다음 케어</div>
         <div class="metric-value">${upcoming.length ? upcoming[0].time : "-"}</div>
-        <div class="metric-note">${upcoming.length ? `${upcoming[0].date} · ${escapeHTML(upcoming[0].cat.name)}` : "등록된 일정 없음"}</div>
+        <div class="metric-note">${upcoming.length ? `${upcoming[0].date} · ${escapeHTML(upcoming[0].cat.name)} · ${upcoming[0].kindLabel}` : "등록된 일정 없음"}</div>
       </div>
       <div class="metric hot">
         <div class="metric-label">최근 체중</div>
@@ -548,15 +554,18 @@ function renderUpcomingPanel(upcoming) {
       <div class="panel-inner">
         <div class="panel-head">
           <div>
-            <h2>다가오는 수액</h2>
-            <p>처방받은 ml를 일정으로 관리합니다.</p>
+            <h2>다가오는 케어</h2>
+            <p>수액, 영양제, 투약 일정을 함께 봅니다.</p>
           </div>
-          <button class="btn small secondary" data-tab="fluid">수액 관리</button>
+          <div class="actions">
+            <button class="btn small secondary" data-tab="fluid">수액</button>
+            <button class="btn small secondary" data-tab="medication">투약</button>
+          </div>
         </div>
         ${
           upcoming.length
-            ? `<div class="timeline">${upcoming.map(renderOccurrence).join("")}</div>`
-            : `<div class="empty">예정된 수액 일정이 없습니다.</div>`
+            ? `<div class="timeline">${upcoming.map(renderCareOccurrence).join("")}</div>`
+            : `<div class="empty">예정된 케어 일정이 없습니다.</div>`
         }
       </div>
     </section>
@@ -731,6 +740,210 @@ function renderOccurrence(item) {
       </button>
     </div>
   `;
+}
+
+function renderMedicationView() {
+  const user = currentUser();
+  const activeCat = getActiveCat();
+  const plans = user
+    ? state.medicationPlans.filter((plan) => plan.userId === user.id && plan.active !== false)
+    : [];
+  const upcoming = user ? getUpcomingMedicationOccurrences({ limit: 18 }) : [];
+
+  return `
+    <section class="view-title">
+      <div>
+        <h1>투약·영양제 스케줄</h1>
+        <p>인흡착제, 레나메진, 유산균, 오메가3, 식이섬유, 병원 처방약 시간을 체크합니다.</p>
+      </div>
+    </section>
+    ${user ? "" : renderAuthPanel()}
+    <div class="grid sidebar">
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>스케줄 만들기</h2>
+              <p>${activeCat ? `${escapeHTML(activeCat.name)} 기준` : "고양이를 먼저 선택하세요"}</p>
+            </div>
+          </div>
+          <form class="grid" data-form="medication-plan">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="med-cat">고양이</label>
+                <select class="select" id="med-cat" name="catId" required>
+                  ${renderCatOptions(activeCat?.id)}
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="med-name">이름</label>
+                <input class="control" id="med-name" name="name" value="오메가3" list="med-name-presets" required />
+                <datalist id="med-name-presets">
+                  <option value="인흡착제"></option>
+                  <option value="레나메진"></option>
+                  <option value="유산균"></option>
+                  <option value="오메가3"></option>
+                  <option value="식이섬유"></option>
+                  <option value="처방약(병원)"></option>
+                  <option value="혈압약"></option>
+                  <option value="단백뇨약"></option>
+                  <option value="구토약"></option>
+                  <option value="식욕촉진제"></option>
+                  <option value="칼륨제"></option>
+                  <option value="빈혈약"></option>
+                  <option value="변비약"></option>
+                </datalist>
+              </div>
+              <div class="form-field">
+                <label for="med-category">종류</label>
+                <select class="select" id="med-category" name="category">
+                  <option value="영양제">영양제</option>
+                  <option value="식이섬유">식이섬유</option>
+                  <option value="인흡착제">인흡착제</option>
+                  <option value="처방약(병원)">처방약(병원)</option>
+                  <option value="보조제">보조제</option>
+                  <option value="기타">기타</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="med-dose">1회 용량</label>
+                <input class="control" id="med-dose" name="dose" placeholder="1캡슐, 0.5정, 1ml" required />
+              </div>
+              <div class="form-field">
+                <label for="med-route">방법</label>
+                <select class="select" id="med-route" name="route">
+                  <option>식후</option>
+                  <option>식전</option>
+                  <option>식사와 함께</option>
+                  <option>공복</option>
+                  <option>시간 고정</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="med-times">하루 횟수</label>
+                <select class="select" id="med-times" name="timesPerDay">
+                  <option value="1">1회</option>
+                  <option value="2">2회</option>
+                  <option value="3">3회</option>
+                  <option value="4">4회</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="med-days">반복 간격</label>
+                <select class="select" id="med-days" name="intervalDays">
+                  <option value="1">매일</option>
+                  <option value="2">이틀마다</option>
+                  <option value="3">3일마다</option>
+                  <option value="7">매주</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="med-time">첫 시간</label>
+                <input class="control" id="med-time" name="firstTime" type="time" value="09:00" required />
+              </div>
+              <div class="form-field">
+                <label for="med-start">시작일</label>
+                <input class="control" id="med-start" name="startDate" type="date" value="${todayISO()}" required />
+              </div>
+              <div class="form-field">
+                <label for="med-end">종료일</label>
+                <input class="control" id="med-end" name="endDate" type="date" />
+              </div>
+              <div class="form-field full">
+                <label for="med-note">메모</label>
+                <textarea class="textarea" id="med-note" name="notes" placeholder="보관 방법, 먹이는 요령, 주의 반응"></textarea>
+              </div>
+            </div>
+            <button class="btn primary" type="submit" ${activeCat ? "" : "disabled"}>스케줄 저장</button>
+          </form>
+          <div class="notice" style="margin-top: 14px">
+            처방약의 용량과 중단 시점은 담당 수의사 지시를 우선하세요. 앱은 복용 시간을 잊지 않기 위한 기록 도구입니다.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>예정 투약</h2>
+              <p>완료를 누르면 기록에 남습니다.</p>
+            </div>
+          </div>
+          ${
+            upcoming.length
+              ? `<div class="timeline">${upcoming.map(renderMedicationOccurrence).join("")}</div>`
+              : `<div class="empty">예정된 투약·영양제 일정이 없습니다.</div>`
+          }
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top: 16px">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>등록된 투약 계획</h2>
+            <p>끝난 계획은 삭제할 수 있습니다.</p>
+          </div>
+        </div>
+        ${
+          plans.length
+            ? `<div class="grid three">${plans.map(renderMedicationPlan).join("")}</div>`
+            : `<div class="empty">등록된 투약·영양제 계획이 없습니다.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderMedicationPlan(plan) {
+  const cat = state.cats.find((item) => item.id === plan.catId);
+  const period = plan.endDate ? `${plan.startDate} - ${plan.endDate}` : `${plan.startDate}부터`;
+  return `
+    <article class="item">
+      <div class="item-head">
+        <div>
+          <h3>${escapeHTML(plan.name)}</h3>
+          <p>${cat ? escapeHTML(cat.name) : "삭제된 고양이"} · ${escapeHTML(plan.category)} · ${escapeHTML(plan.dose)} · ${plan.intervalDays === 1 ? "매일" : `${plan.intervalDays}일마다`}</p>
+          <div class="chips">
+            <span class="chip amber">${escapeHTML(plan.route)}</span>
+            <span class="chip blue">${period}</span>
+            ${plan.times.map((time) => `<span class="chip">${time}</span>`).join("")}
+          </div>
+        </div>
+        <button class="btn small danger" data-action="delete-medication-plan" data-id="${plan.id}">삭제</button>
+      </div>
+    </article>
+  `;
+}
+
+function renderMedicationOccurrence(item) {
+  const done = isMedicationCompleted(item.plan.id, item.date, item.time);
+  return `
+    <div class="timeline-row">
+      <div class="time-badge">${item.date.slice(5)}<br />${item.time}</div>
+      <div>
+        <strong>${escapeHTML(item.cat.name)} · ${escapeHTML(item.plan.name)}</strong>
+        <p>${escapeHTML(item.plan.category)} · ${escapeHTML(item.plan.dose)} · ${escapeHTML(item.plan.route)}${item.plan.notes ? ` · ${escapeHTML(item.plan.notes)}` : ""}</p>
+      </div>
+      <button
+        class="btn small ${done ? "secondary" : "primary"}"
+        data-action="complete-medication"
+        data-plan-id="${item.plan.id}"
+        data-date="${item.date}"
+        data-time="${item.time}"
+        ${done ? "disabled" : ""}
+      >
+        ${done ? "완료됨" : "완료"}
+      </button>
+    </div>
+  `;
+}
+
+function renderCareOccurrence(item) {
+  if (item.kind === "medication") return renderMedicationOccurrence(item);
+  return renderOccurrence(item);
 }
 
 function renderNutritionView() {
@@ -1460,6 +1673,13 @@ function handleAction(actionName, element) {
     if (!confirm(`${cat.name} 프로필과 관련 기록을 삭제할까요?`)) return;
     state.cats = state.cats.filter((item) => item.id !== cat.id);
     state.fluidPlans = state.fluidPlans.filter((item) => item.catId !== cat.id);
+    state.fluidLogs = state.fluidLogs.filter((log) =>
+      state.fluidPlans.some((plan) => plan.id === log.planId)
+    );
+    state.medicationPlans = state.medicationPlans.filter((item) => item.catId !== cat.id);
+    state.medicationLogs = state.medicationLogs.filter((log) =>
+      state.medicationPlans.some((plan) => plan.id === log.planId)
+    );
     state.weightLogs = state.weightLogs.filter((item) => item.catId !== cat.id);
     if (state.activeCatId === cat.id) state.activeCatId = getUserCats()[0]?.id || null;
     saveState();
@@ -1470,8 +1690,18 @@ function handleAction(actionName, element) {
 
   if (actionName === "delete-fluid-plan") {
     state.fluidPlans = state.fluidPlans.filter((plan) => plan.id !== element.dataset.id);
+    state.fluidLogs = state.fluidLogs.filter((log) => log.planId !== element.dataset.id);
     saveState();
     showToast("수액 계획을 삭제했습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "delete-medication-plan") {
+    state.medicationPlans = state.medicationPlans.filter((plan) => plan.id !== element.dataset.id);
+    state.medicationLogs = state.medicationLogs.filter((log) => log.planId !== element.dataset.id);
+    saveState();
+    showToast("투약 계획을 삭제했습니다.");
     render();
     return;
   }
@@ -1494,6 +1724,28 @@ function handleAction(actionName, element) {
     }
     saveState();
     showToast("수액 완료 기록을 남겼습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "complete-medication") {
+    const user = requireUser();
+    if (!user) return;
+    const planId = element.dataset.planId;
+    const date = element.dataset.date;
+    const time = element.dataset.time;
+    if (!isMedicationCompleted(planId, date, time)) {
+      state.medicationLogs.push({
+        id: uid("medlog"),
+        userId: user.id,
+        planId,
+        date,
+        time,
+        completedAt: new Date().toISOString()
+      });
+    }
+    saveState();
+    showToast("투약 완료 기록을 남겼습니다.");
     render();
     return;
   }
@@ -1619,6 +1871,33 @@ function handleForm(formName, form) {
     });
     saveState();
     showToast("수액 스케줄을 저장했습니다.");
+    render();
+    return;
+  }
+
+  if (formName === "medication-plan") {
+    const user = requireUser();
+    if (!user) return;
+    const times = buildTimes(String(data.get("firstTime")), toNumber(data.get("timesPerDay")));
+    state.medicationPlans.push({
+      id: uid("med"),
+      userId: user.id,
+      catId: String(data.get("catId")),
+      name: String(data.get("name")).trim(),
+      category: String(data.get("category")),
+      dose: String(data.get("dose")).trim(),
+      route: String(data.get("route")),
+      timesPerDay: toNumber(data.get("timesPerDay")),
+      intervalDays: toNumber(data.get("intervalDays")),
+      times,
+      startDate: String(data.get("startDate")),
+      endDate: String(data.get("endDate") || ""),
+      notes: String(data.get("notes") || "").trim(),
+      active: true,
+      createdAt: new Date().toISOString()
+    });
+    saveState();
+    showToast("투약·영양제 스케줄을 저장했습니다.");
     render();
     return;
   }
@@ -1959,7 +2238,7 @@ function getUpcomingOccurrences({ limit = 12 } = {}) {
         const diff = daysBetween(plan.startDate, date);
         if (diff < 0 || diff % plan.intervalDays !== 0) continue;
         plan.times.forEach((time) => {
-          items.push({ plan, cat, date, time });
+          items.push({ kind: "fluid", kindLabel: "수액", plan, cat, date, time });
         });
       }
     });
@@ -1969,8 +2248,52 @@ function getUpcomingOccurrences({ limit = 12 } = {}) {
     .slice(0, limit);
 }
 
+function getUpcomingMedicationOccurrences({ limit = 12 } = {}) {
+  const user = currentUser();
+  if (!user) return [];
+  const today = new Date(`${todayISO()}T00:00:00`);
+  const cats = getUserCats();
+  const catIds = new Set(cats.map((cat) => cat.id));
+  const items = [];
+
+  state.medicationPlans
+    .filter((plan) => plan.userId === user.id && plan.active !== false && catIds.has(plan.catId))
+    .forEach((plan) => {
+      const cat = cats.find((item) => item.id === plan.catId);
+      if (!cat) return;
+      for (let day = 0; day < 21; day += 1) {
+        const date = addDaysISO(today, day);
+        const diff = daysBetween(plan.startDate, date);
+        if (diff < 0 || diff % plan.intervalDays !== 0) continue;
+        if (plan.endDate && date > plan.endDate) continue;
+        plan.times.forEach((time) => {
+          items.push({ kind: "medication", kindLabel: "투약", plan, cat, date, time });
+        });
+      }
+    });
+
+  return items
+    .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))
+    .slice(0, limit);
+}
+
+function getUpcomingCareOccurrences({ limit = 12 } = {}) {
+  return [
+    ...getUpcomingOccurrences({ limit: 30 }),
+    ...getUpcomingMedicationOccurrences({ limit: 30 })
+  ]
+    .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))
+    .slice(0, limit);
+}
+
 function isFluidCompleted(planId, date, time) {
   return state.fluidLogs.some(
+    (log) => log.planId === planId && log.date === date && log.time === time
+  );
+}
+
+function isMedicationCompleted(planId, date, time) {
+  return state.medicationLogs.some(
     (log) => log.planId === planId && log.date === date && log.time === time
   );
 }
@@ -2141,6 +2464,26 @@ function startDemo() {
     });
   }
 
+  if (!state.medicationPlans.some((plan) => plan.userId === user.id)) {
+    state.medicationPlans.push({
+      id: uid("med"),
+      userId: user.id,
+      catId: cat.id,
+      name: "오메가3",
+      category: "영양제",
+      dose: "1캡슐",
+      route: "식사와 함께",
+      timesPerDay: 1,
+      intervalDays: 1,
+      times: ["09:00"],
+      startDate: todayISO(),
+      endDate: "",
+      notes: "둘러보기 예시",
+      active: true,
+      createdAt: new Date().toISOString()
+    });
+  }
+
   if (!state.posts.some((post) => post.userId === user.id)) {
     state.posts.push({
       id: uid("post"),
@@ -2170,6 +2513,8 @@ function exportData() {
         cats: state.cats.filter((cat) => cat.userId === user.id),
         fluidPlans: state.fluidPlans.filter((plan) => plan.userId === user.id),
         fluidLogs: state.fluidLogs.filter((log) => log.userId === user.id),
+        medicationPlans: state.medicationPlans.filter((plan) => plan.userId === user.id),
+        medicationLogs: state.medicationLogs.filter((log) => log.userId === user.id),
         weightLogs: state.weightLogs.filter((log) => log.userId === user.id),
         customFoods: state.customFoods.filter((food) => food.userId === user.id),
         customResources: state.customResources.filter((resource) => resource.userId === user.id),

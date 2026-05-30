@@ -1,9 +1,9 @@
-const CACHE_NAME = "sinego-care-v5";
+const CACHE_NAME = "sinego-care-v7";
 const ASSETS = [
   "/",
   "/index.html",
-  "/src/styles.css?v=5",
-  "/src/app.js?v=5",
+  "/src/styles.css?v=7",
+  "/src/app.js?v=7",
   "/assets/logo.svg",
   "/manifest.webmanifest"
 ];
