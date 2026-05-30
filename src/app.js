@@ -4,7 +4,9 @@ const tabs = [
   { id: "dashboard", label: "홈" },
   { id: "fluid", label: "수액" },
   { id: "medication", label: "투약" },
+  { id: "symptoms", label: "증상" },
   { id: "nutrition", label: "영양" },
+  { id: "labs", label: "혈검" },
   { id: "weight", label: "체중" },
   { id: "resources", label: "자료" },
   { id: "board", label: "게시판" }
@@ -18,6 +20,75 @@ const healthOptions = {
   dental: "구내염/치아",
   heart: "심장질환"
 };
+
+const medicationPresets = [
+  { key: "phosphate-binder", label: "인흡착제", category: "인흡착제", classification: "인흡착제" },
+  { key: "renamezin", label: "레나메진", category: "처방약(병원)", classification: "요독흡착제" },
+  { key: "probiotic", label: "유산균", category: "영양제", classification: "유산균" },
+  { key: "omega3", label: "오메가3", category: "영양제", classification: "오메가3" },
+  { key: "antiemetic", label: "항구토제", category: "처방약(병원)", classification: "항구토제" },
+  { key: "pancreas-support", label: "췌장보조제", category: "보조제", classification: "췌장보조제" },
+  { key: "potassium", label: "칼륨보조제", category: "보조제", classification: "칼륨보조제" },
+  { key: "cobalamin", label: "코발라민", category: "영양제", classification: "코발라민" }
+];
+
+const vomitColorOptions = ["없음", "투명/거품", "노랑", "사료색", "갈색", "분홍/혈색", "기타"];
+const stoolColorOptions = ["없음", "정상 갈색", "짙은 갈색", "검정", "노랑", "초록", "붉은 혈색", "회색", "기타"];
+const stoolStateOptions = ["정상", "무른변", "설사", "물설사", "변비", "혈변 의심"];
+
+const labFieldGroups = [
+  {
+    title: "신장·전해질",
+    description: "신장수치, 전해질, 요검사 핵심 항목",
+    fields: [
+      { key: "bun", label: "BUN", unit: "mg/dL", step: "0.1", digits: 1 },
+      { key: "crea", label: "CREA", unit: "mg/dL", step: "0.01", digits: 2 },
+      { key: "sdma", label: "SDMA", unit: "ug/dL", step: "0.1", digits: 1 },
+      { key: "phos", label: "P / Phos", unit: "mg/dL", step: "0.1", digits: 1 },
+      { key: "ph", label: "pH", unit: "", step: "0.01", digits: 2 },
+      { key: "ca", label: "Ca", unit: "mg/dL", step: "0.1", digits: 1 },
+      { key: "k", label: "K", unit: "mmol/L", step: "0.01", digits: 2 },
+      { key: "na", label: "Na", unit: "mmol/L", step: "1", digits: 0 },
+      { key: "cl", label: "Cl", unit: "mmol/L", step: "1", digits: 0 },
+      { key: "usg", label: "USG", unit: "", step: "0.001", digits: 3 },
+      { key: "upc", label: "UPC / UPRO/UCREA", unit: "", step: "0.01", digits: 2 }
+    ]
+  },
+  {
+    title: "CBC",
+    description: "빈혈, 백혈구, 혈소판 관련 항목",
+    fields: [
+      { key: "hct", label: "HCT", unit: "%", step: "0.1", digits: 1 },
+      { key: "hgb", label: "HGB", unit: "g/dL", step: "0.1", digits: 1 },
+      { key: "rbc", label: "RBC", unit: "10x6/uL", step: "0.01", digits: 2 },
+      { key: "wbc", label: "WBC", unit: "10x3/uL", step: "0.01", digits: 2 },
+      { key: "plt", label: "PLT", unit: "10x3/uL", step: "1", digits: 0 },
+      { key: "retic", label: "RETIC#", unit: "10x3/uL", step: "0.1", digits: 1 }
+    ]
+  },
+  {
+    title: "화학·염증",
+    description: "간수치, 단백, 혈당, 염증 수치",
+    fields: [
+      { key: "alb", label: "ALB", unit: "g/dL", step: "0.1", digits: 1 },
+      { key: "tp", label: "TP", unit: "g/dL", step: "0.1", digits: 1 },
+      { key: "glob", label: "GLOB", unit: "g/dL", step: "0.1", digits: 1 },
+      { key: "alt", label: "ALT", unit: "U/L", step: "1", digits: 0 },
+      { key: "ast", label: "AST", unit: "U/L", step: "1", digits: 0 },
+      { key: "alkp", label: "ALKP / ALP", unit: "U/L", step: "1", digits: 0 },
+      { key: "glu", label: "GLU", unit: "mg/dL", step: "1", digits: 0 },
+      { key: "chol", label: "Cholesterol", unit: "mg/dL", step: "1", digits: 0 },
+      { key: "fsaa", label: "fSAA", unit: "ug/ml", step: "0.1", digits: 1 }
+    ]
+  },
+  {
+    title: "췌장",
+    description: "췌장염 모니터링에 참고하는 항목",
+    fields: [
+      { key: "fpl", label: "fPL", unit: "ug/L", step: "0.1", digits: 1 }
+    ]
+  }
+];
 
 const seedFoods = [
   {
@@ -131,7 +202,7 @@ let toastText = "";
 let toastTimer = null;
 
 render();
-registerServiceWorker();
+disableServiceWorkerCache();
 
 document.addEventListener("click", (event) => {
   const tab = event.target.closest("[data-tab]");
@@ -156,6 +227,12 @@ document.addEventListener("submit", (event) => {
   handleForm(form.dataset.form, form);
 });
 
+document.addEventListener("change", (event) => {
+  if (event.target.closest("#med-category")) {
+    syncMedicationPresetPanel(event.target.form);
+  }
+});
+
 function defaultState() {
   return {
     version: 1,
@@ -168,6 +245,8 @@ function defaultState() {
     fluidLogs: [],
     medicationPlans: [],
     medicationLogs: [],
+    symptomLogs: [],
+    labLogs: [],
     weightLogs: [],
     customFoods: [],
     customResources: [],
@@ -194,6 +273,8 @@ function loadState() {
       fluidLogs: Array.isArray(saved.fluidLogs) ? saved.fluidLogs : [],
       medicationPlans: Array.isArray(saved.medicationPlans) ? saved.medicationPlans : [],
       medicationLogs: Array.isArray(saved.medicationLogs) ? saved.medicationLogs : [],
+      symptomLogs: Array.isArray(saved.symptomLogs) ? saved.symptomLogs : [],
+      labLogs: Array.isArray(saved.labLogs) ? saved.labLogs : [],
       weightLogs: Array.isArray(saved.weightLogs) ? saved.weightLogs : [],
       customFoods: Array.isArray(saved.customFoods) ? saved.customFoods : [],
       customResources: Array.isArray(saved.customResources) ? saved.customResources : [],
@@ -266,7 +347,9 @@ function renderHeader() {
 function renderView(active) {
   if (active === "fluid") return renderFluidView();
   if (active === "medication") return renderMedicationView();
+  if (active === "symptoms") return renderSymptomsView();
   if (active === "nutrition") return renderNutritionView();
+  if (active === "labs") return renderLabsView();
   if (active === "weight") return renderWeightView();
   if (active === "resources") return renderResourcesView();
   if (active === "board") return renderBoardView();
@@ -323,6 +406,8 @@ function renderDashboardView() {
       </div>
       <div class="grid">
         ${renderUpcomingPanel(upcoming)}
+        ${renderDashboardLabPanel()}
+        ${renderDashboardSymptomPanel()}
         ${renderDashboardWeightPanel()}
       </div>
     </div>
@@ -591,6 +676,70 @@ function renderDashboardWeightPanel() {
   `;
 }
 
+function renderDashboardLabPanel() {
+  const latest = getActiveCatLabLogs().at(-1);
+  return `
+    <section class="panel">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>최근 혈검</h2>
+            <p>${latest ? `${latest.date} · ${escapeHTML(latest.hospital || "병원 미입력")}` : "기록 없음"}</p>
+          </div>
+          <button class="btn small secondary" data-tab="labs">혈검 기록</button>
+        </div>
+        ${
+          latest
+            ? `<div class="grid four">
+                ${renderLabMetric(latest, "bun")}
+                ${renderLabMetric(latest, "crea")}
+                ${renderLabMetric(latest, "hct")}
+                ${renderLabMetric(latest, "usg")}
+              </div>`
+            : `<div class="empty">혈액검사 수치를 기록하면 최근 BUN, CREA, HCT, USG가 표시됩니다.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderDashboardSymptomPanel() {
+  const logs = getActiveCatSymptomLogs();
+  const todayLogs = logs.filter((log) => log.date === todayISO());
+  const latest = logs.at(-1);
+  const vomitTotal = todayLogs.reduce((sum, log) => sum + toNumber(log.vomitCount), 0);
+  const diarrheaTotal = todayLogs.reduce((sum, log) => sum + toNumber(log.diarrheaCount), 0);
+  return `
+    <section class="panel">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>오늘 증상</h2>
+            <p>${latest ? `${latest.date} · 최근 기록 있음` : "기록 없음"}</p>
+          </div>
+          <button class="btn small secondary" data-tab="symptoms">증상 기록</button>
+        </div>
+        ${
+          latest
+            ? `<div class="grid two">
+                <div class="metric">
+                  <div class="metric-label">오늘 구토</div>
+                  <div class="metric-value">${formatNumber(vomitTotal)}회</div>
+                  <div class="metric-note">최근 색 ${escapeHTML(latest.vomitColor || "없음")}</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-label">오늘 설사</div>
+                  <div class="metric-value">${formatNumber(diarrheaTotal)}회</div>
+                  <div class="metric-note">최근 색 ${escapeHTML(latest.stoolColor || "없음")}</div>
+                </div>
+              </div>`
+            : `<div class="empty">구토나 설사 횟수와 색을 기록하면 오늘 합계가 표시됩니다.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
 function renderFluidView() {
   const user = currentUser();
   const activeCat = getActiveCat();
@@ -754,7 +903,7 @@ function renderMedicationView() {
     <section class="view-title">
       <div>
         <h1>투약·영양제 스케줄</h1>
-        <p>인흡착제, 레나메진, 유산균, 오메가3, 식이섬유, 병원 처방약 시간을 체크합니다.</p>
+        <p>인흡착제, 요독흡착제, 영양제, 병원 처방약 시간을 체크합니다.</p>
       </div>
     </section>
     ${user ? "" : renderAuthPanel()}
@@ -767,7 +916,7 @@ function renderMedicationView() {
               <p>${activeCat ? `${escapeHTML(activeCat.name)} 기준` : "고양이를 먼저 선택하세요"}</p>
             </div>
           </div>
-          <form class="grid" data-form="medication-plan">
+          <form class="grid medication-form" data-form="medication-plan">
             <div class="form-grid">
               <div class="form-field">
                 <label for="med-cat">고양이</label>
@@ -777,19 +926,21 @@ function renderMedicationView() {
               </div>
               <div class="form-field">
                 <label for="med-name">이름</label>
-                <input class="control" id="med-name" name="name" value="오메가3" list="med-name-presets" required />
+                <input class="control" id="med-name" name="name" placeholder="직접 입력 또는 아래에서 선택" list="med-name-presets" />
                 <datalist id="med-name-presets">
                   <option value="인흡착제"></option>
                   <option value="레나메진"></option>
                   <option value="유산균"></option>
                   <option value="오메가3"></option>
+                  <option value="항구토제"></option>
+                  <option value="췌장보조제"></option>
+                  <option value="칼륨보조제"></option>
+                  <option value="코발라민"></option>
                   <option value="식이섬유"></option>
                   <option value="처방약(병원)"></option>
                   <option value="혈압약"></option>
                   <option value="단백뇨약"></option>
-                  <option value="구토약"></option>
                   <option value="식욕촉진제"></option>
-                  <option value="칼륨제"></option>
                   <option value="빈혈약"></option>
                   <option value="변비약"></option>
                 </datalist>
@@ -804,6 +955,12 @@ function renderMedicationView() {
                   <option value="보조제">보조제</option>
                   <option value="기타">기타</option>
                 </select>
+              </div>
+              <div class="form-field full med-preset-panel" data-med-preset-panel>
+                <span class="field-label">영양제·처방 체크리스트</span>
+                <div class="choice-row">
+                  ${renderMedicationPresetChecklist()}
+                </div>
               </div>
               <div class="form-field">
                 <label for="med-dose">1회 용량</label>
@@ -907,6 +1064,7 @@ function renderMedicationPlan(plan) {
           <h3>${escapeHTML(plan.name)}</h3>
           <p>${cat ? escapeHTML(cat.name) : "삭제된 고양이"} · ${escapeHTML(plan.category)} · ${escapeHTML(plan.dose)} · ${plan.intervalDays === 1 ? "매일" : `${plan.intervalDays}일마다`}</p>
           <div class="chips">
+            ${plan.classification ? `<span class="chip">${escapeHTML(plan.classification)}</span>` : ""}
             <span class="chip amber">${escapeHTML(plan.route)}</span>
             <span class="chip blue">${period}</span>
             ${plan.times.map((time) => `<span class="chip">${time}</span>`).join("")}
@@ -918,6 +1076,20 @@ function renderMedicationPlan(plan) {
   `;
 }
 
+function renderMedicationPresetChecklist() {
+  return medicationPresets
+    .map(
+      (preset) => `
+        <label class="check-pill med-preset-pill">
+          <input type="checkbox" name="presetKeys" value="${escapeAttr(preset.key)}" />
+          <span>${escapeHTML(preset.label)}</span>
+          <small>${escapeHTML(preset.category === preset.classification ? preset.category : preset.classification)}</small>
+        </label>
+      `
+    )
+    .join("");
+}
+
 function renderMedicationOccurrence(item) {
   const done = isMedicationCompleted(item.plan.id, item.date, item.time);
   return `
@@ -925,7 +1097,7 @@ function renderMedicationOccurrence(item) {
       <div class="time-badge">${item.date.slice(5)}<br />${item.time}</div>
       <div>
         <strong>${escapeHTML(item.cat.name)} · ${escapeHTML(item.plan.name)}</strong>
-        <p>${escapeHTML(item.plan.category)} · ${escapeHTML(item.plan.dose)} · ${escapeHTML(item.plan.route)}${item.plan.notes ? ` · ${escapeHTML(item.plan.notes)}` : ""}</p>
+        <p>${escapeHTML(item.plan.category)}${item.plan.classification ? ` · ${escapeHTML(item.plan.classification)}` : ""} · ${escapeHTML(item.plan.dose)} · ${escapeHTML(item.plan.route)}${item.plan.notes ? ` · ${escapeHTML(item.plan.notes)}` : ""}</p>
       </div>
       <button
         class="btn small ${done ? "secondary" : "primary"}"
@@ -944,6 +1116,158 @@ function renderMedicationOccurrence(item) {
 function renderCareOccurrence(item) {
   if (item.kind === "medication") return renderMedicationOccurrence(item);
   return renderOccurrence(item);
+}
+
+function renderSymptomsView() {
+  const user = currentUser();
+  const activeCat = getActiveCat();
+  const logs = getActiveCatSymptomLogs();
+  const todayLogs = logs.filter((log) => log.date === todayISO());
+  const vomitTotal = todayLogs.reduce((sum, log) => sum + toNumber(log.vomitCount), 0);
+  const diarrheaTotal = todayLogs.reduce((sum, log) => sum + toNumber(log.diarrheaCount), 0);
+
+  return `
+    <section class="view-title">
+      <div>
+        <h1>구토·설사 체크</h1>
+        <p>구토와 설사의 횟수, 색, 상태를 날짜별로 기록합니다.</p>
+      </div>
+    </section>
+    ${user ? "" : renderAuthPanel()}
+    <div class="grid sidebar">
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>증상 기록 추가</h2>
+              <p>${activeCat ? `${escapeHTML(activeCat.name)} 상태 기록` : "고양이를 먼저 선택하세요"}</p>
+            </div>
+          </div>
+          <form class="grid" data-form="symptom-log">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="symptom-cat">고양이</label>
+                <select class="select" id="symptom-cat" name="catId" required>${renderCatOptions(activeCat?.id)}</select>
+              </div>
+              <div class="form-field">
+                <label for="symptom-date">날짜</label>
+                <input class="control" id="symptom-date" name="date" type="date" value="${todayISO()}" required />
+              </div>
+            </div>
+            <div class="item">
+              <div class="panel-head">
+                <div>
+                  <h2>구토</h2>
+                  <p>횟수와 색</p>
+                </div>
+              </div>
+              <div class="form-grid">
+                <div class="form-field">
+                  <label for="vomit-count">구토 횟수</label>
+                  <input class="control" id="vomit-count" name="vomitCount" inputmode="numeric" value="0" />
+                </div>
+                <div class="form-field">
+                  <label for="vomit-color">구토 색</label>
+                  <select class="select" id="vomit-color" name="vomitColor">${renderOptions(vomitColorOptions)}</select>
+                </div>
+              </div>
+            </div>
+            <div class="item">
+              <div class="panel-head">
+                <div>
+                  <h2>설사·대변</h2>
+                  <p>횟수, 색, 상태</p>
+                </div>
+              </div>
+              <div class="form-grid three">
+                <div class="form-field">
+                  <label for="diarrhea-count">설사 횟수</label>
+                  <input class="control" id="diarrhea-count" name="diarrheaCount" inputmode="numeric" value="0" />
+                </div>
+                <div class="form-field">
+                  <label for="stool-color">대변 색</label>
+                  <select class="select" id="stool-color" name="stoolColor">${renderOptions(stoolColorOptions, "정상 갈색")}</select>
+                </div>
+                <div class="form-field">
+                  <label for="stool-state">대변 상태</label>
+                  <select class="select" id="stool-state" name="stoolState">${renderOptions(stoolStateOptions)}</select>
+                </div>
+              </div>
+            </div>
+            <div class="form-field">
+              <label for="symptom-notes">메모</label>
+              <textarea class="textarea" id="symptom-notes" name="notes" placeholder="식사, 약, 수액, 컨디션 변화"></textarea>
+            </div>
+            <button class="btn primary" type="submit" ${activeCat ? "" : "disabled"}>증상 기록 저장</button>
+          </form>
+          <div class="notice" style="margin-top: 14px">
+            반복 구토, 혈색 구토, 검정변, 혈변, 물설사가 이어지면 병원 상담이 필요할 수 있습니다.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>오늘 요약</h2>
+              <p>${todayISO()} 기준</p>
+            </div>
+          </div>
+          <div class="grid two">
+            <div class="metric ${vomitTotal > 0 ? "warn" : "good"}">
+              <div class="metric-label">구토</div>
+              <div class="metric-value">${formatNumber(vomitTotal)}회</div>
+              <div class="metric-note">오늘 기록 합계</div>
+            </div>
+            <div class="metric ${diarrheaTotal > 0 ? "warn" : "good"}">
+              <div class="metric-label">설사</div>
+              <div class="metric-value">${formatNumber(diarrheaTotal)}회</div>
+              <div class="metric-note">오늘 기록 합계</div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top: 16px">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>증상 기록 목록</h2>
+            <p>${logs.length}개 기록 · 최신순</p>
+          </div>
+        </div>
+        ${
+          logs.length
+            ? `<div class="list">${logs.slice().reverse().map(renderSymptomLogItem).join("")}</div>`
+            : `<div class="empty">아직 증상 기록이 없습니다.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderSymptomLogItem(log) {
+  const cat = state.cats.find((item) => item.id === log.catId);
+  return `
+    <article class="item">
+      <div class="item-head">
+        <div>
+          <h3>${log.date} ${cat ? `· ${escapeHTML(cat.name)}` : ""}</h3>
+          <div class="chips">
+            <span class="chip ${toNumber(log.vomitCount) > 0 ? "amber" : ""}">구토 ${formatNumber(log.vomitCount)}회</span>
+            <span class="chip">구토색 ${escapeHTML(log.vomitColor || "없음")}</span>
+            <span class="chip ${toNumber(log.diarrheaCount) > 0 ? "amber" : ""}">설사 ${formatNumber(log.diarrheaCount)}회</span>
+            <span class="chip">대변색 ${escapeHTML(log.stoolColor || "없음")}</span>
+            <span class="chip blue">${escapeHTML(log.stoolState || "정상")}</span>
+          </div>
+          ${log.notes ? `<p>${escapeHTML(log.notes)}</p>` : ""}
+        </div>
+        <button class="btn small danger" data-action="delete-symptom-log" data-id="${log.id}">삭제</button>
+      </div>
+    </article>
+  `;
 }
 
 function renderNutritionView() {
@@ -1336,6 +1660,172 @@ function renderFoodAddForm() {
   `;
 }
 
+function renderLabsView() {
+  const user = currentUser();
+  const activeCat = getActiveCat();
+  const logs = getActiveCatLabLogs();
+  const latest = logs.at(-1);
+  const previous = logs.length > 1 ? logs.at(-2) : null;
+
+  return `
+    <section class="view-title">
+      <div>
+        <h1>혈검·신장수치</h1>
+        <p>BUN, CREA, HCT, 전해질, 요검사 수치를 날짜별로 기록합니다.</p>
+      </div>
+    </section>
+    ${user ? "" : renderAuthPanel()}
+    <div class="grid sidebar">
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>검사 기록 추가</h2>
+              <p>${activeCat ? `${escapeHTML(activeCat.name)} 검사 기록` : "고양이를 먼저 선택하세요"}</p>
+            </div>
+          </div>
+          <form class="grid" data-form="lab-log">
+            <div class="form-grid">
+              <div class="form-field">
+                <label for="lab-cat">고양이</label>
+                <select class="select" id="lab-cat" name="catId" required>${renderCatOptions(activeCat?.id)}</select>
+              </div>
+              <div class="form-field">
+                <label for="lab-date">검사일</label>
+                <input class="control" id="lab-date" name="date" type="date" value="${todayISO()}" required />
+              </div>
+              <div class="form-field">
+                <label for="lab-hospital">병원</label>
+                <input class="control" id="lab-hospital" name="hospital" placeholder="예: 24시 동물의료센터" />
+              </div>
+              <div class="form-field">
+                <label for="lab-report">검사지/파일명</label>
+                <input class="control" id="lab-report" name="reportName" placeholder="예: 5.28 혈액검사지" />
+              </div>
+            </div>
+
+            ${labFieldGroups.map(renderLabFieldGroup).join("")}
+
+            <div class="form-field">
+              <label for="lab-notes">메모</label>
+              <textarea class="textarea" id="lab-notes" name="notes" placeholder="수의사 설명, 약 변경, 식욕/수액 상태"></textarea>
+            </div>
+            <button class="btn primary" type="submit" ${activeCat ? "" : "disabled"}>검사 기록 저장</button>
+          </form>
+          <div class="notice" style="margin-top: 14px">
+            참고범위는 병원 장비, 나이, 상태에 따라 달라질 수 있습니다. 앱은 수치 변화 기록용이며, 해석은 담당 수의사 설명을 우선하세요.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>최근 검사 요약</h2>
+              <p>${latest ? `${latest.date} 기준` : "기록 없음"}</p>
+            </div>
+          </div>
+          ${
+            latest
+              ? `<div class="grid two">
+                  ${renderLabMetric(latest, "bun", previous)}
+                  ${renderLabMetric(latest, "crea", previous)}
+                  ${renderLabMetric(latest, "sdma", previous)}
+                  ${renderLabMetric(latest, "phos", previous)}
+                  ${renderLabMetric(latest, "ph", previous)}
+                  ${renderLabMetric(latest, "hct", previous)}
+                  ${renderLabMetric(latest, "fpl", previous)}
+                  ${renderLabMetric(latest, "usg", previous)}
+                </div>`
+              : `<div class="empty">검사 수치를 저장하면 주요 수치가 표시됩니다.</div>`
+          }
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top: 16px">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>검사 기록 목록</h2>
+            <p>${logs.length}개 기록 · 최신순</p>
+          </div>
+        </div>
+        ${
+          logs.length
+            ? `<div class="list">${logs.slice().reverse().map(renderLabLogItem).join("")}</div>`
+            : `<div class="empty">아직 혈검 기록이 없습니다.</div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderLabFieldGroup(group) {
+  return `
+    <div class="item">
+      <div class="panel-head">
+        <div>
+          <h2>${escapeHTML(group.title)}</h2>
+          <p>${escapeHTML(group.description)}</p>
+        </div>
+      </div>
+      <div class="form-grid three">
+        ${group.fields.map(renderLabInput).join("")}
+      </div>
+    </div>
+  `;
+}
+
+function renderLabInput(field) {
+  return `
+    <div class="form-field">
+      <label for="lab-${field.key}">${escapeHTML(field.label)}${field.unit ? ` (${field.unit})` : ""}</label>
+      <input class="control" id="lab-${field.key}" name="${field.key}" inputmode="decimal" placeholder="${escapeAttr(field.unit)}" />
+    </div>
+  `;
+}
+
+function renderLabMetric(log, key, previous = null) {
+  const field = getLabField(key);
+  const value = log.values?.[key];
+  const delta = previous ? renderLabDelta(value, previous.values?.[key], field) : "첫 기록";
+  return `
+    <div class="metric">
+      <div class="metric-label">${escapeHTML(field?.label || key)}</div>
+      <div class="metric-value">${formatLabValue(value, field)}</div>
+      <div class="metric-note">${delta}</div>
+    </div>
+  `;
+}
+
+function renderLabLogItem(log) {
+  const cat = state.cats.find((item) => item.id === log.catId);
+  const summaryKeys = ["bun", "crea", "sdma", "phos", "ph", "hct", "hgb", "plt", "usg", "upc", "fpl"];
+  return `
+    <article class="item">
+      <div class="item-head">
+        <div>
+          <h3>${log.date} ${cat ? `· ${escapeHTML(cat.name)}` : ""}</h3>
+          <p>${escapeHTML(log.hospital || "병원 미입력")}${log.reportName ? ` · ${escapeHTML(log.reportName)}` : ""}</p>
+          <div class="chips">
+            ${summaryKeys
+              .filter((key) => log.values?.[key] !== undefined)
+              .map((key) => {
+                const field = getLabField(key);
+                return `<span class="chip">${escapeHTML(field.label)} ${formatLabValue(log.values[key], field)}</span>`;
+              })
+              .join("")}
+          </div>
+          ${log.notes ? `<p>${escapeHTML(log.notes)}</p>` : ""}
+        </div>
+        <button class="btn small danger" data-action="delete-lab-log" data-id="${log.id}">삭제</button>
+      </div>
+    </article>
+  `;
+}
+
 function renderWeightView() {
   const user = currentUser();
   const activeCat = getActiveCat();
@@ -1680,6 +2170,8 @@ function handleAction(actionName, element) {
     state.medicationLogs = state.medicationLogs.filter((log) =>
       state.medicationPlans.some((plan) => plan.id === log.planId)
     );
+    state.symptomLogs = state.symptomLogs.filter((item) => item.catId !== cat.id);
+    state.labLogs = state.labLogs.filter((item) => item.catId !== cat.id);
     state.weightLogs = state.weightLogs.filter((item) => item.catId !== cat.id);
     if (state.activeCatId === cat.id) state.activeCatId = getUserCats()[0]?.id || null;
     saveState();
@@ -1702,6 +2194,14 @@ function handleAction(actionName, element) {
     state.medicationLogs = state.medicationLogs.filter((log) => log.planId !== element.dataset.id);
     saveState();
     showToast("투약 계획을 삭제했습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "delete-symptom-log") {
+    state.symptomLogs = state.symptomLogs.filter((log) => log.id !== element.dataset.id);
+    saveState();
+    showToast("증상 기록을 삭제했습니다.");
     render();
     return;
   }
@@ -1762,6 +2262,14 @@ function handleAction(actionName, element) {
     state.weightLogs = state.weightLogs.filter((log) => log.id !== element.dataset.id);
     saveState();
     showToast("체중 기록을 삭제했습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "delete-lab-log") {
+    state.labLogs = state.labLogs.filter((log) => log.id !== element.dataset.id);
+    saveState();
+    showToast("검사 기록을 삭제했습니다.");
     render();
     return;
   }
@@ -1879,12 +2387,23 @@ function handleForm(formName, form) {
     const user = requireUser();
     if (!user) return;
     const times = buildTimes(String(data.get("firstTime")), toNumber(data.get("timesPerDay")));
-    state.medicationPlans.push({
-      id: uid("med"),
+    const manualName = String(data.get("name") || "").trim();
+    const selectedPresets = data
+      .getAll("presetKeys")
+      .map((key) => getMedicationPreset(String(key)))
+      .filter(Boolean);
+    const manualPreset = findMedicationPresetByLabel(manualName);
+    const entries = selectedPresets.length
+      ? selectedPresets
+      : [{ label: manualName, category: String(data.get("category")), classification: manualPreset?.classification || "" }];
+    if (!entries[0].label) {
+      showToast("이름을 입력하거나 체크리스트에서 선택해주세요.");
+      render();
+      return;
+    }
+    const basePlan = {
       userId: user.id,
       catId: String(data.get("catId")),
-      name: String(data.get("name")).trim(),
-      category: String(data.get("category")),
       dose: String(data.get("dose")).trim(),
       route: String(data.get("route")),
       timesPerDay: toNumber(data.get("timesPerDay")),
@@ -1893,11 +2412,20 @@ function handleForm(formName, form) {
       startDate: String(data.get("startDate")),
       endDate: String(data.get("endDate") || ""),
       notes: String(data.get("notes") || "").trim(),
-      active: true,
-      createdAt: new Date().toISOString()
+      active: true
+    };
+    entries.forEach((entry) => {
+      state.medicationPlans.push({
+        id: uid("med"),
+        ...basePlan,
+        name: entry.label,
+        category: manualPreset && entry.label === manualName ? manualPreset.category : entry.category,
+        classification: entry.classification || "",
+        createdAt: new Date().toISOString()
+      });
     });
     saveState();
-    showToast("투약·영양제 스케줄을 저장했습니다.");
+    showToast(entries.length > 1 ? `${entries.length}개 스케줄을 저장했습니다.` : "투약·영양제 스케줄을 저장했습니다.");
     render();
     return;
   }
@@ -2001,6 +2529,28 @@ function handleForm(formName, form) {
     return;
   }
 
+  if (formName === "symptom-log") {
+    const user = requireUser();
+    if (!user) return;
+    state.symptomLogs.push({
+      id: uid("symptom"),
+      userId: user.id,
+      catId: String(data.get("catId")),
+      date: String(data.get("date")),
+      vomitCount: Math.max(0, Math.round(toNumber(data.get("vomitCount")))),
+      vomitColor: String(data.get("vomitColor") || "없음"),
+      diarrheaCount: Math.max(0, Math.round(toNumber(data.get("diarrheaCount")))),
+      stoolColor: String(data.get("stoolColor") || "없음"),
+      stoolState: String(data.get("stoolState") || "정상"),
+      notes: String(data.get("notes") || "").trim(),
+      createdAt: new Date().toISOString()
+    });
+    saveState();
+    showToast("증상 기록을 저장했습니다.");
+    render();
+    return;
+  }
+
   if (formName === "weight-log") {
     const user = requireUser();
     if (!user) return;
@@ -2020,6 +2570,48 @@ function handleForm(formName, form) {
     if (cat) cat.weightKg = log.weightKg;
     saveState();
     showToast("체중을 기록했습니다.");
+    render();
+    return;
+  }
+
+  if (formName === "lab-log") {
+    const user = requireUser();
+    if (!user) return;
+    const values = {};
+    const invalidLabels = [];
+    getLabFields().forEach((field) => {
+      const rawValue = String(data.get(field.key) || "").trim();
+      if (rawValue === "") return;
+      const number = Number(rawValue.replaceAll(",", ""));
+      if (Number.isFinite(number)) {
+        values[field.key] = number;
+      } else {
+        invalidLabels.push(field.label);
+      }
+    });
+    if (invalidLabels.length) {
+      showToast(`${invalidLabels.slice(0, 3).join(", ")} 수치는 숫자로 입력해주세요.`);
+      render();
+      return;
+    }
+    if (!Object.keys(values).length) {
+      showToast("하나 이상의 검사 수치를 입력해주세요.");
+      render();
+      return;
+    }
+    state.labLogs.push({
+      id: uid("lab"),
+      userId: user.id,
+      catId: String(data.get("catId")),
+      date: String(data.get("date")),
+      hospital: String(data.get("hospital") || "").trim(),
+      reportName: String(data.get("reportName") || "").trim(),
+      values,
+      notes: String(data.get("notes") || "").trim(),
+      createdAt: new Date().toISOString()
+    });
+    saveState();
+    showToast("검사 수치를 기록했습니다.");
     render();
     return;
   }
@@ -2121,12 +2713,65 @@ function getActiveCatWeightLogs() {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function getActiveCatSymptomLogs() {
+  const cat = getActiveCat();
+  if (!cat) return [];
+  return state.symptomLogs
+    .filter((log) => log.catId === cat.id)
+    .slice()
+    .sort((a, b) => `${a.date}T${a.createdAt || ""}`.localeCompare(`${b.date}T${b.createdAt || ""}`));
+}
+
+function getActiveCatLabLogs() {
+  const cat = getActiveCat();
+  if (!cat) return [];
+  return state.labLogs
+    .filter((log) => log.catId === cat.id)
+    .slice()
+    .sort((a, b) => `${a.date}T${a.createdAt || ""}`.localeCompare(`${b.date}T${b.createdAt || ""}`));
+}
+
 function getFoods() {
   const user = currentUser();
   const custom = user
     ? state.customFoods.filter((food) => food.userId === user.id)
     : state.customFoods;
   return [...seedFoods, ...custom];
+}
+
+function getMedicationPreset(key) {
+  return medicationPresets.find((preset) => preset.key === key) || null;
+}
+
+function findMedicationPresetByLabel(label) {
+  return medicationPresets.find((preset) => preset.label === label) || null;
+}
+
+function syncMedicationPresetPanel(form) {
+  if (!form) return;
+  const category = form.querySelector("#med-category");
+  const panel = form.querySelector("[data-med-preset-panel]");
+  if (!category || !panel) return;
+  const visible = category.value === "영양제";
+  panel.hidden = !visible;
+  if (!visible) {
+    panel.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
+      checkbox.checked = false;
+    });
+  }
+}
+
+function getLabFields() {
+  return labFieldGroups.flatMap((group) => group.fields);
+}
+
+function getLabField(key) {
+  return getLabFields().find((field) => field.key === key) || {
+    key,
+    label: key.toUpperCase(),
+    unit: "",
+    digits: 2
+  };
 }
 
 function calorieProfile(cat) {
@@ -2387,6 +3032,44 @@ function drawWeightChart(canvasId, logs) {
   ctx.fillText(last.date.slice(5), width - padding.right, height - 14);
 }
 
+function createDemoLabLog(user, cat) {
+  return {
+    id: uid("lab"),
+    userId: user.id,
+    catId: cat.id,
+    date: "2026-05-28",
+    hospital: "24시 동물의료센터",
+    reportName: "5.28 혈액검사지 예시",
+    values: {
+      bun: 26.7,
+      crea: 1.5,
+      ca: 11.5,
+      k: 3.33,
+      na: 150,
+      cl: 127,
+      hct: 42.7,
+      hgb: 13.3,
+      rbc: 9.29,
+      wbc: 5.72,
+      plt: 239,
+      retic: 39,
+      alb: 3,
+      tp: 7.9,
+      glob: 4.9,
+      alt: 62,
+      ast: 39,
+      alkp: 23,
+      glu: 147,
+      chol: 328,
+      fsaa: 3,
+      usg: 1.043,
+      upc: 0.04
+    },
+    notes: "첨부 예시 검사표의 주요 항목만 입력한 샘플입니다.",
+    createdAt: new Date().toISOString()
+  };
+}
+
 function startDemo() {
   let user = state.users.find((item) => item.email === "demo@sinego.local");
   if (!user) {
@@ -2464,6 +3147,26 @@ function startDemo() {
     });
   }
 
+  if (!state.labLogs.some((log) => log.userId === user.id)) {
+    state.labLogs.push(createDemoLabLog(user, cat));
+  }
+
+  if (!state.symptomLogs.some((log) => log.userId === user.id)) {
+    state.symptomLogs.push({
+      id: uid("symptom"),
+      userId: user.id,
+      catId: cat.id,
+      date: todayISO(),
+      vomitCount: 0,
+      vomitColor: "없음",
+      diarrheaCount: 0,
+      stoolColor: "정상 갈색",
+      stoolState: "정상",
+      notes: "둘러보기 예시",
+      createdAt: new Date().toISOString()
+    });
+  }
+
   if (!state.medicationPlans.some((plan) => plan.userId === user.id)) {
     state.medicationPlans.push({
       id: uid("med"),
@@ -2471,6 +3174,7 @@ function startDemo() {
       catId: cat.id,
       name: "오메가3",
       category: "영양제",
+      classification: "오메가3",
       dose: "1캡슐",
       route: "식사와 함께",
       timesPerDay: 1,
@@ -2515,6 +3219,8 @@ function exportData() {
         fluidLogs: state.fluidLogs.filter((log) => log.userId === user.id),
         medicationPlans: state.medicationPlans.filter((plan) => plan.userId === user.id),
         medicationLogs: state.medicationLogs.filter((log) => log.userId === user.id),
+        symptomLogs: state.symptomLogs.filter((log) => log.userId === user.id),
+        labLogs: state.labLogs.filter((log) => log.userId === user.id),
         weightLogs: state.weightLogs.filter((log) => log.userId === user.id),
         customFoods: state.customFoods.filter((food) => food.userId === user.id),
         customResources: state.customResources.filter((resource) => resource.userId === user.id),
@@ -2536,6 +3242,14 @@ function renderCatOptions(selectedId) {
   return cats
     .map(
       (cat) => `<option value="${cat.id}" ${cat.id === selectedId ? "selected" : ""}>${escapeHTML(cat.name)}</option>`
+    )
+    .join("");
+}
+
+function renderOptions(options, selectedValue = options[0]) {
+  return options
+    .map(
+      (option) => `<option value="${escapeAttr(option)}" ${option === selectedValue ? "selected" : ""}>${escapeHTML(option)}</option>`
     )
     .join("");
 }
@@ -2612,6 +3326,22 @@ function formatNumber(value, digits = 0) {
   }).format(Number(value));
 }
 
+function formatLabValue(value, field = null) {
+  if (!Number.isFinite(Number(value))) return "-";
+  const digits = field?.digits ?? 2;
+  const unit = field?.unit ? ` ${field.unit}` : "";
+  return `${formatNumber(Number(value), digits)}${unit}`;
+}
+
+function renderLabDelta(value, previousValue, field = null) {
+  if (!Number.isFinite(Number(value)) || !Number.isFinite(Number(previousValue))) return "이전 기록 없음";
+  const delta = Number(value) - Number(previousValue);
+  if (Math.abs(delta) < 0.0001) return "변화 없음";
+  const sign = delta > 0 ? "+" : "";
+  const unit = field?.unit ? ` ${field.unit}` : "";
+  return `이전 대비 ${sign}${formatNumber(delta, field?.digits ?? 2)}${unit}`;
+}
+
 function escapeHTML(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -2638,7 +3368,17 @@ function showToast(message) {
   }, 2800);
 }
 
-function registerServiceWorker() {
+function disableServiceWorkerCache() {
+  if ("caches" in window) {
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+      .catch(() => {});
+  }
+
   if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
-  navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((registrations) => Promise.all(registrations.map((registration) => registration.unregister())))
+    .catch(() => {});
 }

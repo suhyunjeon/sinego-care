@@ -32,12 +32,7 @@ function resolveAsset(url) {
 }
 
 function cacheControlFor(filePath) {
-  const fileName = path.basename(filePath);
-  const ext = path.extname(filePath);
-  if (ext === ".html" || fileName === "service-worker.js") {
-    return "no-store";
-  }
-  return "public, max-age=3600";
+  return "no-store";
 }
 
 createServer(async (req, res) => {
