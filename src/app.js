@@ -85,7 +85,7 @@ const seedResources = [
   {
     id: "resource_cafe",
     category: "커뮤니티",
-    title: "신장을 이긴 고양이 네이버 카페",
+    title: "신장질환을 이긴 고양이 네이버 카페",
     summary: "환묘 집사들이 경험과 자료를 나누는 커뮤니티입니다.",
     url: "https://cafe.naver.com/catnkidney/",
     tags: ["카페", "경험공유"]
@@ -231,7 +231,7 @@ function renderHeader() {
         <div class="brand">
           <img src="/assets/logo.svg" alt="" />
           <div>
-            <span class="brand-name">신장을 이긴 고양이 케어</span>
+            <span class="brand-name">신장질환을 이긴 고양이 케어</span>
             <span class="brand-sub">무료 환묘 케어 도구</span>
           </div>
         </div>
