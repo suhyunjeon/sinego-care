@@ -1,0 +1,17 @@
+{
+  "name": "신장을 이긴 고양이 케어",
+  "short_name": "환묘케어",
+  "description": "무료 고양이 환묘 케어 웹서비스",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7fbf9",
+  "theme_color": "#0f766e",
+  "icons": [
+    {
+      "src": "/assets/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

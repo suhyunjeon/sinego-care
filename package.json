@@ -1,0 +1,19 @@
+{
+  "name": "sinego-care",
+  "version": "0.1.0",
+  "private": true,
+  "description": "고양이 환묘 케어 웹서비스 프로토타입",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-static.js",
+    "dev": "node server.js",
+    "start": "node server.js"
+  },
+  "keywords": [
+    "cat",
+    "care",
+    "ckd",
+    "pwa"
+  ],
+  "license": "UNLICENSED"
+}
