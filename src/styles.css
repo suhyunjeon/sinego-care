@@ -314,6 +314,21 @@ a {
   font-weight: 750;
 }
 
+.field-help {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.field-help.is-error {
+  color: var(--danger);
+}
+
+.field-help.is-success {
+  color: var(--teal-dark);
+}
+
 .control,
 .textarea,
 .select {

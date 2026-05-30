@@ -8,7 +8,6 @@ const tabs = [
   { id: "nutrition", label: "영양" },
   { id: "labs", label: "혈검" },
   { id: "weight", label: "체중" },
-  { id: "resources", label: "자료" },
   { id: "board", label: "게시판" }
 ];
 
@@ -29,7 +28,19 @@ const medicationPresets = [
   { key: "antiemetic", label: "항구토제", category: "처방약(병원)", classification: "항구토제" },
   { key: "pancreas-support", label: "췌장보조제", category: "보조제", classification: "췌장보조제" },
   { key: "potassium", label: "칼륨보조제", category: "보조제", classification: "칼륨보조제" },
-  { key: "cobalamin", label: "코발라민", category: "영양제", classification: "코발라민" }
+  { key: "cobalamin", label: "코발라민", category: "영양제", classification: "코발라민" },
+  { key: "aminavast", label: "아미나바스트", category: "보조제", classification: "아미나바스트" },
+  { key: "liver-support", label: "간보조제", category: "보조제", classification: "간보조제" }
+];
+
+const fluidTypeOptions = [
+  "하트만",
+  "NS 0.9",
+  "LRS",
+  "Plasma-Lyte",
+  "Normosol-R",
+  "D5W",
+  "기타"
 ];
 
 const vomitColorOptions = ["없음", "투명/거품", "노랑", "사료색", "갈색", "분홍/혈색", "기타"];
@@ -89,6 +100,53 @@ const labFieldGroups = [
     ]
   }
 ];
+
+const PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
+const PDFJS_WORKER_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
+
+const labPdfAliases = {
+  bun: ["BUN"],
+  crea: ["CREA", "CRE", "Creatinine"],
+  sdma: ["SDMA"],
+  phos: ["PHOS", "Phosphorus", "P"],
+  ph: ["pH"],
+  ca: ["Ca", "Calcium"],
+  k: ["K", "Potassium"],
+  na: ["Na", "Sodium"],
+  cl: ["Cl", "Chloride"],
+  usg: ["USG", "SG"],
+  upc: ["UPC", "UPRO/UCREA", "UPCR"],
+  hct: ["HCT", "PCV"],
+  hgb: ["HGB", "Hb"],
+  rbc: ["RBC"],
+  wbc: ["WBC"],
+  plt: ["PLT", "Platelet"],
+  retic: ["RETIC#", "RETIC"],
+  alb: ["ALB", "Albumin"],
+  tp: ["TP", "Total Protein"],
+  glob: ["GLOB", "Globulin"],
+  alt: ["ALT"],
+  ast: ["AST"],
+  alkp: ["ALKP", "ALP"],
+  glu: ["GLU", "Glucose"],
+  chol: ["Cholesterol", "CHOL"],
+  fsaa: ["fSAA", "SAA"],
+  fpl: ["fPL", "Spec fPL"]
+};
+
+const labPdfExpectedRanges = {
+  ph: [5, 9],
+  ca: [4, 20],
+  k: [1, 10],
+  na: [100, 200],
+  cl: [80, 160],
+  usg: [1, 1.1],
+  hct: [5, 80],
+  hgb: [2, 25],
+  rbc: [1, 20],
+  wbc: [0, 100],
+  plt: [0, 1200]
+};
 
 const seedFoods = [
   {
@@ -231,6 +289,18 @@ document.addEventListener("change", (event) => {
   if (event.target.closest("#med-category")) {
     syncMedicationPresetPanel(event.target.form);
   }
+  if (event.target.closest("#med-preset-select")) {
+    syncMedicationPresetSelect(event.target.form);
+  }
+  if (event.target.closest("#lab-pdf")) {
+    handleLabPdfUpload(event.target);
+  }
+});
+
+document.addEventListener("input", (event) => {
+  if (event.target.closest("#lab-pdf")) {
+    handleLabPdfUpload(event.target);
+  }
 });
 
 function defaultState() {
@@ -318,7 +388,7 @@ function renderHeader() {
           <img src="/assets/logo.svg" alt="" />
           <div>
             <span class="brand-name">신장질환을 이긴 고양이 케어</span>
-            <span class="brand-sub">무료 환묘 케어 도구</span>
+            <span class="brand-sub">환묘 케어 도구</span>
           </div>
         </div>
         <nav class="tabs" aria-label="주요 메뉴">
@@ -345,15 +415,27 @@ function renderHeader() {
 }
 
 function renderView(active) {
+  if (!currentUser()) return renderAuthView();
   if (active === "fluid") return renderFluidView();
   if (active === "medication") return renderMedicationView();
   if (active === "symptoms") return renderSymptomsView();
   if (active === "nutrition") return renderNutritionView();
   if (active === "labs") return renderLabsView();
   if (active === "weight") return renderWeightView();
-  if (active === "resources") return renderResourcesView();
   if (active === "board") return renderBoardView();
   return renderDashboardView();
+}
+
+function renderAuthView() {
+  return `
+    <section class="view-title">
+      <div>
+        <h1>신장질환을 이긴 고양이 케어</h1>
+        <p>회원가입 또는 로그인 후 케어 도구를 사용할 수 있습니다.</p>
+      </div>
+    </section>
+    ${renderAuthPanel()}
+  `;
 }
 
 function renderDashboardView() {
@@ -420,27 +502,31 @@ function renderAuthPanel() {
       <div class="panel-inner">
         <div class="panel-head">
           <div>
-            <h2>무료 회원 시작</h2>
+            <h2>회원 시작</h2>
             <p>데이터는 현재 기기의 브라우저에만 저장됩니다.</p>
           </div>
-          <button class="btn primary" data-action="start-demo">둘러보기</button>
+          <button class="btn primary" data-action="start-demo">데모 둘러보기</button>
         </div>
         <div class="auth-grid">
           <form class="grid" data-form="signup">
             <div class="section-head">
               <h2>회원가입</h2>
-              <p>이름, 이메일, 비밀번호로 로컬 계정을 만듭니다.</p>
+              <p>네이버 ID와 신이고 닉네임으로 베타 계정을 만듭니다.</p>
             </div>
             <div class="form-grid">
               <div class="form-field">
-                <label for="signup-name">이름</label>
-                <input class="control" id="signup-name" name="name" required autocomplete="name" />
+                <label for="signup-naver">네이버 ID</label>
+                <input class="control" id="signup-naver" name="naverId" required autocomplete="username" />
+              </div>
+              <div class="form-field">
+                <label for="signup-nickname">신이고 닉네임</label>
+                <input class="control" id="signup-nickname" name="cafeNickname" required autocomplete="nickname" />
               </div>
               <div class="form-field">
                 <label for="signup-email">이메일</label>
                 <input class="control" id="signup-email" name="email" type="email" required autocomplete="email" />
               </div>
-              <div class="form-field full">
+              <div class="form-field">
                 <label for="signup-password">비밀번호</label>
                 <input class="control" id="signup-password" name="password" type="password" minlength="4" required autocomplete="new-password" />
               </div>
@@ -778,8 +864,14 @@ function renderFluidView() {
                 <input class="control" id="fluid-name" name="name" value="피하수액" required />
               </div>
               <div class="form-field">
+                <label for="fluid-type">수액 종류</label>
+                <select class="select" id="fluid-type" name="fluidType">
+                  ${renderOptions(fluidTypeOptions)}
+                </select>
+              </div>
+              <div class="form-field">
                 <label for="fluid-dose">1회 ml</label>
-                <input class="control" id="fluid-dose" name="doseMl" type="number" min="1" max="1000" step="1" required />
+                <input class="control" id="fluid-dose" name="doseMl" inputmode="numeric" required />
               </div>
               <div class="form-field">
                 <label for="fluid-times">하루 횟수</label>
@@ -857,8 +949,9 @@ function renderFluidPlan(plan) {
       <div class="item-head">
         <div>
           <h3>${escapeHTML(plan.name)}</h3>
-          <p>${cat ? escapeHTML(cat.name) : "삭제된 고양이"} · ${formatNumber(plan.doseMl)} ml · ${plan.intervalDays === 1 ? "매일" : `${plan.intervalDays}일마다`}</p>
+          <p>${cat ? escapeHTML(cat.name) : "삭제된 고양이"} · ${escapeHTML(plan.fluidType || "수액")} · ${formatNumber(plan.doseMl)} ml · ${plan.intervalDays === 1 ? "매일" : `${plan.intervalDays}일마다`}</p>
           <div class="chips">
+            <span class="chip amber">${escapeHTML(plan.fluidType || "수액")}</span>
             ${plan.times.map((time) => `<span class="chip">${time}</span>`).join("")}
           </div>
         </div>
@@ -875,7 +968,7 @@ function renderOccurrence(item) {
       <div class="time-badge">${item.date.slice(5)}<br />${item.time}</div>
       <div>
         <strong>${escapeHTML(item.cat.name)} · ${escapeHTML(item.plan.name)}</strong>
-        <p>${formatNumber(item.plan.doseMl)} ml ${item.plan.notes ? `· ${escapeHTML(item.plan.notes)}` : ""}</p>
+        <p>${escapeHTML(item.plan.fluidType || "수액")} · ${formatNumber(item.plan.doseMl)} ml ${item.plan.notes ? `· ${escapeHTML(item.plan.notes)}` : ""}</p>
       </div>
       <button
         class="btn small ${done ? "secondary" : "primary"}"
@@ -936,6 +1029,8 @@ function renderMedicationView() {
                   <option value="췌장보조제"></option>
                   <option value="칼륨보조제"></option>
                   <option value="코발라민"></option>
+                  <option value="아미나바스트"></option>
+                  <option value="간보조제"></option>
                   <option value="식이섬유"></option>
                   <option value="처방약(병원)"></option>
                   <option value="혈압약"></option>
@@ -954,6 +1049,12 @@ function renderMedicationView() {
                   <option value="처방약(병원)">처방약(병원)</option>
                   <option value="보조제">보조제</option>
                   <option value="기타">기타</option>
+                </select>
+              </div>
+              <div class="form-field">
+                <label for="med-preset-select">빠른 선택</label>
+                <select class="select" id="med-preset-select" name="presetKey">
+                  ${renderMedicationPresetOptions()}
                 </select>
               </div>
               <div class="form-field full med-preset-panel" data-med-preset-panel>
@@ -1088,6 +1189,18 @@ function renderMedicationPresetChecklist() {
       `
     )
     .join("");
+}
+
+function renderMedicationPresetOptions() {
+  return `
+    <option value="">직접 입력 또는 체크리스트 선택</option>
+    ${medicationPresets
+      .map(
+        (preset) =>
+          `<option value="${escapeAttr(preset.key)}">${escapeHTML(preset.label)} · ${escapeHTML(preset.category)}</option>`
+      )
+      .join("")}
+  `;
 }
 
 function renderMedicationOccurrence(item) {
@@ -1702,6 +1815,14 @@ function renderLabsView() {
                 <label for="lab-report">검사지/파일명</label>
                 <input class="control" id="lab-report" name="reportName" placeholder="예: 5.28 혈액검사지" />
               </div>
+              <div class="form-field full">
+                <label for="lab-pdf">혈액검사지 PDF 자동 입력</label>
+                <input class="control" id="lab-pdf" type="file" accept="application/pdf,.pdf" />
+                <p class="field-help" id="lab-pdf-status">
+                  PDF 선택 후 자동으로 입력되지 않으면 아래 버튼을 눌러주세요.
+                </p>
+                <button class="btn secondary small" type="button" data-action="read-lab-pdf">PDF 내용 불러오기</button>
+              </div>
             </div>
 
             ${labFieldGroups.map(renderLabFieldGroup).join("")}
@@ -2058,7 +2179,6 @@ function renderBoardView() {
                   <option>수액</option>
                   <option>검사</option>
                   <option>후기</option>
-                  <option>자료</option>
                 </select>
               </div>
               <div class="form-field">
@@ -2250,6 +2370,12 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "read-lab-pdf") {
+    const input = document.querySelector("#lab-pdf");
+    handleLabPdfUpload(input, { force: true });
+    return;
+  }
+
   if (actionName === "select-food") {
     state.selectedFoodId = element.dataset.id;
     state.nutritionResult = null;
@@ -2305,9 +2431,12 @@ function handleForm(formName, form) {
       render();
       return;
     }
+    const cafeNickname = String(data.get("cafeNickname")).trim();
     const user = {
       id: uid("user"),
-      name: String(data.get("name")).trim(),
+      name: cafeNickname,
+      naverId: String(data.get("naverId")).trim(),
+      cafeNickname,
       email,
       password: String(data.get("password")),
       createdAt: new Date().toISOString()
@@ -2368,6 +2497,7 @@ function handleForm(formName, form) {
       userId: user.id,
       catId: String(data.get("catId")),
       name: String(data.get("name")).trim(),
+      fluidType: String(data.get("fluidType") || "하트만"),
       doseMl: toNumber(data.get("doseMl")),
       timesPerDay: toNumber(data.get("timesPerDay")),
       intervalDays: toNumber(data.get("intervalDays")),
@@ -2388,10 +2518,14 @@ function handleForm(formName, form) {
     if (!user) return;
     const times = buildTimes(String(data.get("firstTime")), toNumber(data.get("timesPerDay")));
     const manualName = String(data.get("name") || "").trim();
+    const selectedPreset = getMedicationPreset(String(data.get("presetKey") || ""));
     const selectedPresets = data
       .getAll("presetKeys")
       .map((key) => getMedicationPreset(String(key)))
       .filter(Boolean);
+    if (selectedPreset && !selectedPresets.some((preset) => preset.key === selectedPreset.key)) {
+      selectedPresets.push(selectedPreset);
+    }
     const manualPreset = findMedicationPresetByLabel(manualName);
     const entries = selectedPresets.length
       ? selectedPresets
@@ -2752,13 +2886,206 @@ function syncMedicationPresetPanel(form) {
   const category = form.querySelector("#med-category");
   const panel = form.querySelector("[data-med-preset-panel]");
   if (!category || !panel) return;
-  const visible = category.value === "영양제";
+  const visible = ["영양제", "보조제", "처방약(병원)", "인흡착제"].includes(category.value);
   panel.hidden = !visible;
   if (!visible) {
     panel.querySelectorAll("input[type='checkbox']").forEach((checkbox) => {
       checkbox.checked = false;
     });
   }
+}
+
+function syncMedicationPresetSelect(form) {
+  if (!form) return;
+  const presetSelect = form.querySelector("#med-preset-select");
+  const nameInput = form.querySelector("#med-name");
+  const category = form.querySelector("#med-category");
+  if (!presetSelect || !nameInput || !category) return;
+  const preset = getMedicationPreset(presetSelect.value);
+  if (!preset) return;
+  nameInput.value = preset.label;
+  category.value = preset.category;
+  syncMedicationPresetPanel(form);
+  const checkbox = form.querySelector(`input[name="presetKeys"][value="${preset.key}"]`);
+  if (checkbox) checkbox.checked = true;
+}
+
+async function handleLabPdfUpload(input, { force = false } = {}) {
+  const file = input?.files?.[0];
+  if (!file) {
+    setLabPdfStatus("PDF 파일을 먼저 선택해주세요.", "error");
+    return;
+  }
+  const signature = `${file.name}:${file.size}:${file.lastModified}`;
+  if (!force && input.dataset.lastLabPdfSignature === signature) return;
+  input.dataset.lastLabPdfSignature = signature;
+  setLabPdfStatus(`${file.name} 파일을 읽는 중입니다. 잠시만 기다려주세요.`);
+
+  try {
+    const text = await extractPdfText(file);
+    if (!text.trim()) {
+      setLabPdfStatus("PDF에서 텍스트를 찾지 못했습니다. 스캔/사진 PDF는 OCR 기능이 필요합니다.", "error");
+      return;
+    }
+
+    const values = parseLabValuesFromText(text);
+    const filledCount = fillLabFormFromPdf(values);
+    fillLabPdfMetadata(file, text);
+
+    if (!filledCount) {
+      setLabPdfStatus("PDF 텍스트는 읽었지만 자동 매칭된 혈검 항목이 없습니다. 수치를 직접 입력해주세요.", "error");
+      return;
+    }
+
+    setLabPdfStatus(`${filledCount}개 혈검 항목을 자동 입력했습니다. 저장 전 수치를 한번 확인해주세요.`, "success");
+  } catch (error) {
+    console.error("PDF 자동 입력 실패", error);
+    setLabPdfStatus(
+      "PDF 자동 입력에 실패했습니다. 인터넷 연결 또는 PDF 형식을 확인하고, 필요하면 수치를 직접 입력해주세요.",
+      "error"
+    );
+  }
+}
+
+async function extractPdfText(file) {
+  const pdfjsLib = await import(PDFJS_URL);
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+  const pages = [];
+
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item) => item.str || "").join("\n"));
+  }
+
+  return pages.join("\n");
+}
+
+function parseLabValuesFromText(text) {
+  return getLabFields().reduce((values, field) => {
+    const matches = findLabPdfMatches(text, field);
+    const value = pickLabPdfValue(field.key, matches);
+    if (Number.isFinite(value)) values[field.key] = value;
+    return values;
+  }, {});
+}
+
+function findLabPdfMatches(text, field) {
+  const normalized = normalizeLabPdfText(text);
+  const lines = normalized.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const flatText = normalized.replace(/\s+/g, " ");
+  const aliases = labPdfAliases[field.key] || [field.label];
+  const matches = [];
+
+  aliases.forEach((alias) => {
+    const escaped = escapeRegExp(alias);
+    const linePattern = new RegExp(`^${escaped}\\s*(?:[:=])?\\s*(-?\\d+(?:[.,]\\d+)?)`, "i");
+    lines.forEach((line) => {
+      const match = line.match(linePattern);
+      if (match) matches.push(parsePdfNumber(match[1]));
+    });
+
+    const flatPattern = new RegExp(`(?:^|[^A-Za-z0-9#])${escaped}(?:\\s|:|=)+(-?\\d+(?:[.,]\\d+)?)`, "gi");
+    let match = flatPattern.exec(flatText);
+    while (match) {
+      matches.push(parsePdfNumber(match[1]));
+      match = flatPattern.exec(flatText);
+    }
+  });
+
+  return matches.filter(Number.isFinite);
+}
+
+function pickLabPdfValue(key, matches) {
+  if (!matches.length) return NaN;
+  const range = labPdfExpectedRanges[key];
+  const candidates = range
+    ? matches.filter((value) => value >= range[0] && value <= range[1])
+    : matches;
+  const values = candidates.length ? candidates : matches;
+
+  if (key === "ph" || key === "k" || key === "na" || key === "cl") return values[0];
+  if (key === "ca") return values.filter((value) => value >= 4).at(-1) ?? values.at(-1);
+  return values.at(-1);
+}
+
+function fillLabFormFromPdf(values) {
+  return Object.entries(values).reduce((count, [key, value]) => {
+    const input = document.querySelector(`#lab-${key}`);
+    if (!input || !Number.isFinite(value)) return count;
+    input.value = String(value);
+    return count + 1;
+  }, 0);
+}
+
+function fillLabPdfMetadata(file, text) {
+  const reportInput = document.querySelector("#lab-report");
+  const hospitalInput = document.querySelector("#lab-hospital");
+  const dateInput = document.querySelector("#lab-date");
+  const reportName = file.name.replace(/\.pdf$/i, "");
+  const date = inferLabPdfDate(`${file.name}\n${text}`);
+  const hospital = inferLabPdfHospital(text);
+
+  if (reportInput && !reportInput.value.trim()) reportInput.value = reportName;
+  if (dateInput && date) dateInput.value = date;
+  if (hospitalInput && !hospitalInput.value.trim() && hospital) hospitalInput.value = hospital;
+}
+
+function inferLabPdfDate(text) {
+  const fullDate = text.match(/(20\d{2})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})/);
+  if (fullDate) return toValidDateISO(fullDate[1], fullDate[2], fullDate[3]);
+
+  const shortDate = text.match(/(?:^|[^\d])(\d{1,2})[.\-/](\d{1,2})(?:[^\d]|$)/);
+  if (shortDate) return toValidDateISO(new Date().getFullYear(), shortDate[1], shortDate[2]);
+
+  return "";
+}
+
+function inferLabPdfHospital(text) {
+  return normalizeLabPdfText(text)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .find((line) => /(동물|병원|의료센터|메디컬센터)/.test(line) && line.length <= 60) || "";
+}
+
+function toValidDateISO(year, month, day) {
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  if (
+    date.getFullYear() !== Number(year) ||
+    date.getMonth() !== Number(month) - 1 ||
+    date.getDate() !== Number(day)
+  ) {
+    return "";
+  }
+  return toISODate(date);
+}
+
+function setLabPdfStatus(message, status = "") {
+  const statusElement = document.querySelector("#lab-pdf-status");
+  if (!statusElement) return;
+  statusElement.textContent = message;
+  statusElement.classList.toggle("is-error", status === "error");
+  statusElement.classList.toggle("is-success", status === "success");
+}
+
+function normalizeLabPdfText(text) {
+  return String(text || "")
+    .replaceAll("\u00a0", " ")
+    .replaceAll("㎍", "ug")
+    .replaceAll("μ", "u");
+}
+
+function parsePdfNumber(value) {
+  const raw = String(value);
+  if (raw.includes(".") && raw.includes(",")) return Number(raw.replaceAll(",", ""));
+  if (!raw.includes(".") && /^\d{1,3}(,\d{3})+$/.test(raw)) return Number(raw.replaceAll(",", ""));
+  return Number(raw.replace(",", "."));
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function getLabFields() {
@@ -3076,6 +3403,8 @@ function startDemo() {
     user = {
       id: uid("user"),
       name: "둘러보기 집사",
+      naverId: "demo_naver",
+      cafeNickname: "둘러보기 집사",
       email: "demo@sinego.local",
       password: "demo",
       createdAt: new Date().toISOString()
@@ -3089,7 +3418,7 @@ function startDemo() {
     cat = {
       id: uid("cat"),
       userId: user.id,
-      name: "나무",
+      name: "신이",
       ageYears: 11,
       weightKg: 4.2,
       bcs: 5,
@@ -3136,6 +3465,7 @@ function startDemo() {
       userId: user.id,
       catId: cat.id,
       name: "피하수액",
+      fluidType: "하트만",
       doseMl: 80,
       timesPerDay: 1,
       intervalDays: 2,
@@ -3145,6 +3475,8 @@ function startDemo() {
       active: true,
       createdAt: new Date().toISOString()
     });
+  } else if (cat.name === "나무") {
+    cat.name = "신이";
   }
 
   if (!state.labLogs.some((log) => log.userId === user.id)) {
