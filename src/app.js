@@ -872,7 +872,7 @@ function renderSupportView() {
     <section class="view-title">
       <div>
         <h1>운영비 후원</h1>
-        <p>신장질환을 이긴 고양이 케어를 무료로 유지하기 위한 자발적 후원 안내입니다.</p>
+        <p>도움이 되셨다면 커피 한 잔 마음으로 서버비와 운영비를 보태주세요.</p>
       </div>
     </section>
 
@@ -908,7 +908,7 @@ function renderSupportView() {
           <div class="panel-head">
             <div>
               <h2>후원 방법</h2>
-              <p>운영비와 서버비 후원 계좌입니다.</p>
+              <p>작은 후원은 이 서비스를 계속 무료로 유지하는 데 큰 힘이 됩니다.</p>
             </div>
           </div>
           ${
@@ -919,7 +919,7 @@ function renderSupportView() {
                       ? `<article class="item">
                           <div class="item-head">
                             <div>
-                              <h3>후원 계좌</h3>
+                              <h3>커피 후원 계좌</h3>
                               <p>${escapeHTML(supportAccountText)}</p>
                             </div>
                             <button class="btn small secondary" data-action="copy-support-account">복사</button>
