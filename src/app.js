@@ -898,7 +898,7 @@ function renderAdminView() {
           ${adminError ? `<p class="field-help is-error" style="margin-top: 12px">${escapeHTML(adminError)}</p>` : ""}
           ${adminLoading ? `<div class="empty" style="margin-top: 12px">신청 목록을 불러오는 중입니다.</div>` : ""}
           ${
-            hasToken && !adminLoading
+            hasToken && !adminLoading && !adminError
               ? `<div class="list" style="margin-top: 12px">
                   ${adminUsers.length ? adminUsers.map(renderAdminUserItem).join("") : `<div class="empty">해당 상태의 가입 신청이 없습니다.</div>`}
                 </div>`
@@ -967,12 +967,26 @@ async function loadAdminUsers() {
     adminLoadedStatus = adminStatusFilter;
   } catch (error) {
     adminUsers = [];
-    adminLoadedStatus = "";
-    adminError = error.message || "가입 신청 목록을 불러오지 못했습니다.";
+    adminLoadedStatus = adminStatusFilter;
+    adminError = formatAdminError(error);
   } finally {
     adminLoading = false;
     render();
   }
+}
+
+function formatAdminError(error) {
+  const code = error?.payload?.code;
+  if (code === "database_not_configured") {
+    return "DATABASE_URL이 설정되지 않았습니다. Render에서 PostgreSQL을 연결한 뒤 다시 시도해주세요.";
+  }
+  if (code === "admin_token_not_configured") {
+    return "ADMIN_TOKEN이 서버 환경변수에 설정되지 않았습니다.";
+  }
+  if (code === "admin_required") {
+    return "관리자 토큰이 올바르지 않습니다.";
+  }
+  return error?.message || "가입 신청 목록을 불러오지 못했습니다.";
 }
 
 async function updateAdminApproval(userId, approvalStatus) {
