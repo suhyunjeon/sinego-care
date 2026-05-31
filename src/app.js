@@ -333,6 +333,7 @@ function defaultState() {
   return {
     version: 1,
     sessionUserId: null,
+    pendingSignup: null,
     activeTab: "dashboard",
     activeCatId: null,
     editingCatId: null,
@@ -364,6 +365,7 @@ function loadState() {
     return {
       ...base,
       ...saved,
+      pendingSignup: saved.pendingSignup && typeof saved.pendingSignup === "object" ? saved.pendingSignup : null,
       users: Array.isArray(saved.users) ? saved.users : [],
       cats: Array.isArray(saved.cats) ? saved.cats : [],
       fluidPlans: Array.isArray(saved.fluidPlans) ? saved.fluidPlans : [],
@@ -476,6 +478,25 @@ function upsertUser(user) {
   } else {
     state.users.push(user);
   }
+}
+
+function rememberPendingSignup(user) {
+  if (!user) return;
+  state.pendingSignup = {
+    id: user.id || "",
+    email: user.email || "",
+    naverId: user.naverId || "",
+    cafeNickname: user.cafeNickname || user.name || "",
+    approvalStatus: user.approvalStatus || "pending",
+    approvalRequestedAt: user.approvalRequestedAt || user.createdAt || new Date().toISOString(),
+    createdAt: user.createdAt || new Date().toISOString()
+  };
+}
+
+function getPendingSignup() {
+  const signup = state.pendingSignup;
+  if (!signup || typeof signup !== "object") return null;
+  return signup;
 }
 
 function buildRemoteState(user = currentUser()) {
@@ -1013,6 +1034,7 @@ async function updateAdminApproval(userId, approvalStatus) {
 }
 
 function renderAuthPanel() {
+  const pendingSignup = getPendingSignup();
   return `
     <section class="panel" style="margin-bottom: 16px">
       <div class="panel-inner">
@@ -1024,32 +1046,7 @@ function renderAuthPanel() {
           <button class="btn primary" data-action="start-demo">데모 둘러보기</button>
         </div>
         <div class="auth-grid">
-          <form class="grid" data-form="signup">
-            <div class="section-head">
-              <h2>회원가입 신청</h2>
-              <p>운영자가 신이고 닉네임과 네이버 ID를 확인한 뒤 승인합니다.</p>
-            </div>
-            <div class="form-grid">
-              <div class="form-field">
-                <label for="signup-naver">네이버 ID</label>
-                <input class="control" id="signup-naver" name="naverId" required autocomplete="username" />
-              </div>
-              <div class="form-field">
-                <label for="signup-nickname">신이고 닉네임</label>
-                <input class="control" id="signup-nickname" name="cafeNickname" required autocomplete="nickname" />
-              </div>
-              <div class="form-field">
-                <label for="signup-email">이메일</label>
-                <input class="control" id="signup-email" name="email" type="email" required autocomplete="email" />
-              </div>
-              <div class="form-field">
-                <label for="signup-password">비밀번호</label>
-                <input class="control" id="signup-password" name="password" type="password" minlength="4" required autocomplete="new-password" />
-              </div>
-            </div>
-            <p class="field-help">승인 전에는 로그인할 수 없으며, 둘러보기로 먼저 기능을 확인할 수 있습니다.</p>
-            <button class="btn primary" type="submit">가입 신청</button>
-          </form>
+          ${pendingSignup ? renderPendingSignupPanel(pendingSignup) : renderSignupForm()}
           <form class="grid" data-form="login">
             <div class="section-head">
               <h2>로그인</h2>
@@ -1058,7 +1055,7 @@ function renderAuthPanel() {
             <div class="form-grid">
               <div class="form-field">
                 <label for="login-email">이메일</label>
-                <input class="control" id="login-email" name="email" type="email" required autocomplete="email" />
+                <input class="control" id="login-email" name="email" type="email" value="${escapeAttr(pendingSignup?.email || "")}" required autocomplete="email" />
               </div>
               <div class="form-field">
                 <label for="login-password">비밀번호</label>
@@ -1070,6 +1067,75 @@ function renderAuthPanel() {
         </div>
       </div>
     </section>
+  `;
+}
+
+function renderSignupForm() {
+  return `
+    <form class="grid" data-form="signup">
+      <div class="section-head">
+        <h2>회원가입 신청</h2>
+        <p>운영자가 신이고 닉네임과 네이버 ID를 확인한 뒤 승인합니다.</p>
+      </div>
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="signup-naver">네이버 ID</label>
+          <input class="control" id="signup-naver" name="naverId" required autocomplete="username" />
+        </div>
+        <div class="form-field">
+          <label for="signup-nickname">신이고 닉네임</label>
+          <input class="control" id="signup-nickname" name="cafeNickname" required autocomplete="nickname" />
+        </div>
+        <div class="form-field">
+          <label for="signup-email">이메일</label>
+          <input class="control" id="signup-email" name="email" type="email" required autocomplete="email" />
+        </div>
+        <div class="form-field">
+          <label for="signup-password">비밀번호</label>
+          <input class="control" id="signup-password" name="password" type="password" minlength="4" required autocomplete="new-password" />
+        </div>
+      </div>
+      <p class="field-help">승인 전에는 로그인할 수 없으며, 둘러보기로 먼저 기능을 확인할 수 있습니다.</p>
+      <button class="btn primary" type="submit">가입 신청</button>
+    </form>
+  `;
+}
+
+function renderPendingSignupPanel(signup) {
+  const requestedText = signup.approvalRequestedAt ? formatDateTime(signup.approvalRequestedAt) : "접수됨";
+  return `
+    <div class="signup-status">
+      <div class="signup-status-head">
+        <div>
+          <p class="status-kicker">가입 신청 완료</p>
+          <h2>승인 대기 중입니다</h2>
+          <p>운영자가 신이고 회원 여부를 확인한 뒤 승인합니다.</p>
+        </div>
+        <span class="chip amber">가입 신청 중</span>
+      </div>
+      <dl class="signup-summary">
+        <div>
+          <dt>신이고 닉네임</dt>
+          <dd>${escapeHTML(signup.cafeNickname || "-")}</dd>
+        </div>
+        <div>
+          <dt>네이버 ID</dt>
+          <dd>${escapeHTML(signup.naverId || "-")}</dd>
+        </div>
+        <div>
+          <dt>이메일</dt>
+          <dd>${escapeHTML(signup.email || "-")}</dd>
+        </div>
+        <div>
+          <dt>신청 시각</dt>
+          <dd>${escapeHTML(requestedText)}</dd>
+        </div>
+      </dl>
+      <p class="field-help">승인 완료 후 같은 이메일과 비밀번호로 로그인할 수 있습니다. 기다리는 동안 데모 둘러보기로 기능을 확인할 수 있어요.</p>
+      <div class="actions">
+        <button class="btn secondary small" type="button" data-action="edit-pending-signup">신청 정보 다시 입력</button>
+      </div>
+    </div>
   `;
 }
 
@@ -1093,7 +1159,7 @@ function renderCatPanel() {
         <div class="panel-head">
           <div>
             <h2>${editingCat ? "고양이 프로필 수정" : "고양이 프로필"}</h2>
-            <p>${editingCat ? `${escapeHTML(editingCat.name)} 정보를 수정합니다.` : "체중, 나이, 건강상태를 케어 계산에 사용합니다."}</p>
+            <p>${editingCat ? `${escapeHTML(editingCat.name)} 정보를 수정합니다.` : "체중, 추정 출생연도, 건강상태를 케어 계산에 사용합니다."}</p>
           </div>
           ${editingCat ? `<button class="btn small secondary" data-action="cancel-cat-edit">새 프로필</button>` : ""}
         </div>
@@ -1112,8 +1178,8 @@ function renderCatPanel() {
               <input class="control" id="cat-name" name="name" value="${escapeAttr(editingCat?.name || "")}" required />
             </div>
             <div class="form-field">
-              <label for="cat-age">나이</label>
-              <input class="control" id="cat-age" name="ageYears" type="number" min="0" max="30" step="0.1" value="${editingCat?.ageYears ?? ""}" required />
+              <label for="cat-birth-year">연도(추정)</label>
+              <input class="control" id="cat-birth-year" name="birthYear" type="number" min="1980" max="${getCurrentYear()}" step="1" placeholder="예: 2015" value="${getCatBirthYearValue(editingCat)}" required />
             </div>
             <div class="form-field">
               <label for="cat-weight">체중 kg</label>
@@ -2792,6 +2858,14 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "edit-pending-signup") {
+    state.pendingSignup = null;
+    saveState();
+    showToast("가입 신청 정보를 다시 입력할 수 있습니다.");
+    render();
+    return;
+  }
+
   if (actionName === "copy-support-account") {
     if (!supportAccountText) return;
     navigator.clipboard?.writeText(supportAccountText);
@@ -3021,12 +3095,21 @@ async function handleForm(formName, form) {
     const password = String(data.get("password"));
 
     try {
-      await apiRequest("/api/signup", {
+      const payload = await apiRequest("/api/signup", {
         method: "POST",
         body: { email, naverId, cafeNickname, password }
       });
       clearAuthToken();
       state.sessionUserId = null;
+      rememberPendingSignup(
+        payload.user || {
+          email,
+          naverId,
+          cafeNickname,
+          approvalStatus: "pending",
+          approvalRequestedAt: new Date().toISOString()
+        }
+      );
       saveState();
       showToast("가입 신청이 접수되었습니다. 운영자 승인 후 로그인할 수 있습니다.");
       render();
@@ -3064,6 +3147,7 @@ async function handleForm(formName, form) {
     };
     state.users.push(user);
     state.sessionUserId = null;
+    rememberPendingSignup(user);
     saveState();
     showToast("가입 신청이 접수되었습니다. 운영자 승인 후 로그인할 수 있습니다.");
     render();
@@ -3087,6 +3171,7 @@ async function handleForm(formName, form) {
       }
       upsertUser(payload.user);
       state.sessionUserId = payload.user.id;
+      state.pendingSignup = null;
       saveState();
       showToast("로그인했습니다.");
       render();
@@ -3094,6 +3179,14 @@ async function handleForm(formName, form) {
     } catch (error) {
       isApplyingRemoteState = false;
       if (!shouldUseLocalFallback(error)) {
+        if (error.payload?.code === "approval_pending") {
+          rememberPendingSignup({
+            email,
+            approvalStatus: "pending",
+            approvalRequestedAt: new Date().toISOString()
+          });
+          saveState();
+        }
         showToast(error.message || "로그인 정보를 확인해주세요.");
         render();
         return;
@@ -3108,6 +3201,8 @@ async function handleForm(formName, form) {
     }
     const status = getApprovalStatus(user);
     if (status === "pending") {
+      rememberPendingSignup(user);
+      saveState();
       showToast("관리자 승인 대기 중입니다. 신이고 회원 확인 후 이용할 수 있습니다.");
       render();
       return;
@@ -3118,6 +3213,7 @@ async function handleForm(formName, form) {
       return;
     }
     state.sessionUserId = user.id;
+    state.pendingSignup = null;
     saveState();
     showToast("로그인했습니다.");
     render();
@@ -3129,11 +3225,18 @@ async function handleForm(formName, form) {
     if (!user) return;
     const catId = String(data.get("id") || "");
     const existingCat = state.cats.find((item) => item.id === catId && item.userId === user.id);
+    const birthYear = normalizeBirthYear(data.get("birthYear"));
+    if (!birthYear) {
+      showToast("추정 출생연도를 입력해주세요.");
+      render();
+      return;
+    }
     const catData = {
       id: existingCat?.id || uid("cat"),
       userId: user.id,
       name: String(data.get("name")).trim(),
-      ageYears: toNumber(data.get("ageYears")),
+      birthYear,
+      ageYears: getAgeYearsFromBirthYear(birthYear),
       weightKg: toNumber(data.get("weightKg")),
       bcs: toNumber(data.get("bcs")),
       neutered: String(data.get("neutered")),
@@ -3779,11 +3882,12 @@ function getLabField(key) {
 
 function calorieProfile(cat) {
   const weight = Math.max(toNumber(cat.weightKg), 0.1);
+  const ageYears = getCatAgeYears(cat);
   const rer = 70 * Math.pow(weight, 0.75);
   const notes = [];
   let target;
 
-  if (cat.ageYears < 1) {
+  if (ageYears < 1) {
     target = rer * 2.5;
     notes.push("성장기");
   } else {
@@ -4098,6 +4202,7 @@ function startDemo() {
       id: uid("cat"),
       userId: user.id,
       name: "신이",
+      birthYear: 2015,
       ageYears: 11,
       weightKg: 4.2,
       bcs: 5,
@@ -4269,11 +4374,46 @@ function renderCatShortMeta(cat) {
   const activity = { low: "낮은 활동량", normal: "보통 활동량", active: "높은 활동량" }[
     cat.activity
   ];
-  return `${formatNumber(cat.weightKg, 2)} kg · ${formatNumber(cat.ageYears, 1)}살 · ${activity || "활동량 미입력"}`;
+  const birthYear = getCatBirthYearValue(cat);
+  const ageYears = getCatAgeYears(cat);
+  const ageText = Number.isFinite(ageYears) ? `약 ${formatNumber(ageYears, 0)}살` : "나이 미입력";
+  const yearText = birthYear ? `${birthYear}년생(추정)` : "출생연도 미입력";
+  return `${formatNumber(cat.weightKg, 2)} kg · ${yearText} · ${ageText} · ${activity || "활동량 미입력"}`;
 }
 
 function range(start, end) {
   return Array.from({ length: end - start + 1 }, (_, index) => start + index);
+}
+
+function getCurrentYear() {
+  return new Date().getFullYear();
+}
+
+function getAgeYearsFromBirthYear(birthYear) {
+  const year = normalizeBirthYear(birthYear);
+  if (!year) return 0;
+  return Math.max(0, getCurrentYear() - year);
+}
+
+function getCatAgeYears(cat) {
+  if (!cat) return 0;
+  if (normalizeBirthYear(cat.birthYear)) return getAgeYearsFromBirthYear(cat.birthYear);
+  return toNumber(cat.ageYears);
+}
+
+function getCatBirthYearValue(cat) {
+  if (!cat) return "";
+  const birthYear = normalizeBirthYear(cat.birthYear);
+  if (birthYear) return birthYear;
+  if (!Number.isFinite(Number(cat.ageYears))) return "";
+  return getCurrentYear() - Math.round(Number(cat.ageYears));
+}
+
+function normalizeBirthYear(value) {
+  const year = Number(value);
+  if (!Number.isInteger(year)) return null;
+  if (year < 1980 || year > getCurrentYear()) return null;
+  return year;
 }
 
 function toNumber(value) {

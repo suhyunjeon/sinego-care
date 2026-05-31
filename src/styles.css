@@ -318,6 +318,69 @@ a {
   gap: 16px;
 }
 
+.signup-status {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  border-left: 4px solid var(--green);
+  border-radius: 8px;
+  padding: 16px;
+  background: #f4fbf8;
+}
+
+.signup-status-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.signup-status-head .chip {
+  justify-self: start;
+}
+
+.signup-status h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.signup-status p {
+  margin: 5px 0 0;
+  color: var(--muted);
+}
+
+.status-kicker {
+  margin: 0 0 6px !important;
+  color: var(--green) !important;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.signup-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.signup-summary div {
+  min-width: 0;
+}
+
+.signup-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.signup-summary dd {
+  margin: 3px 0 0;
+  color: var(--ink);
+  font-weight: 750;
+  word-break: break-word;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -690,8 +753,13 @@ canvas {
   .grid.three,
   .grid.four,
   .grid.sidebar,
-  .auth-grid {
+  .auth-grid,
+  .signup-summary {
     grid-template-columns: 1fr;
+  }
+
+  .signup-status-head {
+    display: grid;
   }
 }
 
