@@ -13,7 +13,8 @@ const tabs = [
   { id: "labs", label: "혈검" },
   { id: "weight", label: "체중" },
   { id: "board", label: "게시판" },
-  { id: "support", label: "후원" }
+  { id: "support", label: "후원" },
+  { id: "privacy", label: "개인정보" }
 ];
 
 const operatorName = "전수현";
@@ -225,6 +226,17 @@ const labPdfExpectedRanges = {
   plt: [0, 1200]
 };
 
+const labReferenceRanges = {
+  bun: { low: 16, high: 36, source: "일반 성묘 참고" },
+  crea: { low: 0.8, high: 2.4, source: "일반 성묘 참고" },
+  sdma: { low: 0, high: 14, source: "일반 성묘 참고" },
+  phos: { low: 2.9, high: 6.3, source: "일반 성묘 참고" },
+  ca: { low: 8.9, high: 11.1, source: "일반 성묘 참고" },
+  k: { low: 3.6, high: 5.2, source: "일반 성묘 참고" },
+  na: { low: 147, high: 157, source: "일반 성묘 참고" },
+  hct: { low: 30.3, high: 52.3, source: "일반 성묘 참고" }
+};
+
 const seedFoods = [
   {
     id: "seed_renal_dry",
@@ -339,6 +351,8 @@ let remoteSaveTimer = null;
 let isApplyingRemoteState = false;
 let adminUsers = [];
 let adminStatusFilter = "pending";
+let adminSearchQuery = "";
+let adminCounts = { pending: 0, approved: 0, rejected: 0 };
 let adminLoadedStatus = "";
 let adminLoading = false;
 let adminError = "";
@@ -628,7 +642,7 @@ function render() {
     ? state.activeTab
     : "dashboard";
   const user = currentUser();
-  if (!isAdmin && user && getUserCats().length === 0 && active !== "cats" && active !== "support") {
+  if (!isAdmin && user && getUserCats().length === 0 && !["cats", "support", "privacy"].includes(active)) {
     active = "cats";
   }
   state.activeTab = active;
@@ -730,6 +744,7 @@ function renderFooter() {
 
 function renderView(active) {
   if (active === "support") return renderSupportView();
+  if (active === "privacy") return renderPrivacyView();
   if (!currentUser()) return renderAuthView();
   if (active === "cats") return renderCatView();
   if (active === "fluid") return renderFluidView();
@@ -951,6 +966,76 @@ function renderSupportView() {
   `;
 }
 
+function renderPrivacyView() {
+  const user = currentUser();
+  return `
+    <section class="view-title">
+      <div>
+        <h1>개인정보·데이터 관리</h1>
+        <p>서비스 이용에 필요한 정보와 보호자 데이터 관리 방법을 확인합니다.</p>
+      </div>
+      ${user ? `<button class="btn secondary" data-action="export-data">내 데이터 내보내기</button>` : ""}
+    </section>
+
+    <div class="grid sidebar">
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>개인정보 처리 안내</h2>
+              <p>무료 베타 서비스 운영을 위한 최소 정보만 사용합니다.</p>
+            </div>
+          </div>
+          <div class="privacy-list">
+            <article class="item">
+              <h3>수집 항목</h3>
+              <p>회원 확인을 위한 네이버 ID, 신이고 닉네임, 이메일, 비밀번호(서버 DB에서는 해시 처리)와 고양이 케어 기록을 저장합니다.</p>
+            </article>
+            <article class="item">
+              <h3>이용 목적</h3>
+              <p>신이고 회원 승인, 로그인, 고양이별 수액·투약·혈검·체중·증상 기록 관리에만 사용합니다.</p>
+            </article>
+            <article class="item">
+              <h3>보관과 삭제</h3>
+              <p>회원이 탈퇴하면 계정과 저장된 케어 데이터는 삭제됩니다. 법적 의무가 생기는 경우가 아니라면 제3자에게 판매하거나 제공하지 않습니다.</p>
+            </article>
+            <article class="item">
+              <h3>주의</h3>
+              <p>민감한 진료 기록을 입력할 수 있으므로 공용 기기에서는 로그아웃하고, 의료 판단은 담당 수의사 안내를 우선하세요.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>계정 관리</h2>
+              <p>${user ? `${escapeHTML(user.name)} 계정` : "로그인 후 데이터 관리 기능을 사용할 수 있습니다."}</p>
+            </div>
+          </div>
+          ${
+            user
+              ? `
+                <div class="grid">
+                  <div class="notice">
+                    탈퇴 전 <strong>내 데이터 내보내기</strong>로 기록을 보관할 수 있습니다. 탈퇴하면 로그인 계정, 고양이 프로필, 케어 기록이 삭제됩니다.
+                  </div>
+                  <div class="actions">
+                    <button class="btn secondary" data-action="export-data">내 데이터 내보내기</button>
+                    <button class="btn danger" data-action="delete-account">회원 탈퇴 및 데이터 삭제</button>
+                  </div>
+                </div>
+              `
+              : `<div class="empty">회원가입 또는 로그인 후 이용할 수 있습니다.</div>`
+          }
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderAdminView() {
   const hasToken = Boolean(getAdminToken());
   return `
@@ -996,9 +1081,22 @@ function renderAdminView() {
           <div class="panel-head">
             <div>
               <h2>가입 신청 상태</h2>
-              <p>${hasToken ? "상태별 신청자를 확인합니다." : "관리자 토큰을 먼저 저장하세요."}</p>
+              <p>${hasToken ? "상태별 신청자를 검색하고 운영 메모를 남깁니다." : "관리자 토큰을 먼저 저장하세요."}</p>
             </div>
           </div>
+          <form class="admin-search" data-form="admin-search">
+            <label class="sr-only" for="admin-search-query">가입 신청 검색</label>
+            <input
+              class="control"
+              id="admin-search-query"
+              name="query"
+              value="${escapeAttr(adminSearchQuery)}"
+              placeholder="닉네임, 네이버 ID, 이메일, 운영 메모 검색"
+              ${hasToken ? "" : "disabled"}
+            />
+            <button class="btn secondary" type="submit" ${hasToken ? "" : "disabled"}>검색</button>
+            <button class="btn ghost" type="button" data-action="admin-search-clear" ${hasToken && adminSearchQuery ? "" : "disabled"}>초기화</button>
+          </form>
           <div class="actions">
             ${renderAdminStatusButton("pending", "승인 대기")}
             ${renderAdminStatusButton("approved", "승인됨")}
@@ -1009,7 +1107,7 @@ function renderAdminView() {
           ${
             hasToken && !adminLoading && !adminError
               ? `<div class="list" style="margin-top: 12px">
-                  ${adminUsers.length ? adminUsers.map(renderAdminUserItem).join("") : `<div class="empty">해당 상태의 가입 신청이 없습니다.</div>`}
+                  ${adminUsers.length ? adminUsers.map(renderAdminUserItem).join("") : `<div class="empty">${adminSearchQuery ? "검색 결과가 없습니다." : "해당 상태의 가입 신청이 없습니다."}</div>`}
                 </div>`
               : ""
           }
@@ -1020,20 +1118,21 @@ function renderAdminView() {
 }
 
 function renderAdminStatusButton(status, label) {
+  const count = Number(adminCounts?.[status] || 0);
   return `
     <button
       class="btn small ${adminStatusFilter === status ? "primary" : "secondary"}"
       data-action="admin-filter"
       data-status="${status}"
     >
-      ${label}
+      ${label} <span class="btn-count">${count}</span>
     </button>
   `;
 }
 
 function renderAdminUserItem(user) {
   return `
-    <article class="item">
+    <article class="item admin-user-card">
       <div class="item-head">
         <div>
           <h3>${escapeHTML(user.cafeNickname || user.name)}</h3>
@@ -1042,6 +1141,7 @@ function renderAdminUserItem(user) {
             <span class="chip ${user.approvalStatus === "approved" ? "blue" : user.approvalStatus === "rejected" ? "coral" : "amber"}">${renderApprovalStatusLabel(user.approvalStatus)}</span>
             <span class="chip">신청 ${formatDateTime(user.approvalRequestedAt || user.createdAt)}</span>
             ${user.approvedAt ? `<span class="chip blue">승인 ${formatDateTime(user.approvedAt)}</span>` : ""}
+            ${user.rejectedAt ? `<span class="chip coral">보류 ${formatDateTime(user.rejectedAt)}</span>` : ""}
           </div>
         </div>
         <div class="actions">
@@ -1050,6 +1150,15 @@ function renderAdminUserItem(user) {
           <button class="btn small danger" data-action="admin-approval" data-id="${escapeAttr(user.id)}" data-status="rejected" ${user.approvalStatus === "rejected" ? "disabled" : ""}>보류</button>
         </div>
       </div>
+      <form class="admin-note-form" data-form="admin-note">
+        <input type="hidden" name="userId" value="${escapeAttr(user.id)}" />
+        <input type="hidden" name="approvalStatus" value="${escapeAttr(user.approvalStatus || "pending")}" />
+        <label for="admin-note-${escapeAttr(user.id)}">운영 메모</label>
+        <textarea class="textarea" id="admin-note-${escapeAttr(user.id)}" name="adminNote" maxlength="1000" placeholder="닉네임 확인 결과, 보류 사유, 재확인 필요 사항">${escapeHTML(user.adminNote || "")}</textarea>
+        <div class="actions">
+          <button class="btn small secondary" type="submit">메모 저장</button>
+        </div>
+      </form>
     </article>
   `;
 }
@@ -1061,7 +1170,7 @@ function renderApprovalStatusLabel(status) {
 }
 
 function queueAdminUsersLoad() {
-  if (!getAdminToken() || adminLoading || adminLoadedStatus === adminStatusFilter) return;
+  if (!getAdminToken() || adminLoading || adminLoadedStatus === getAdminLoadedKey()) return;
   loadAdminUsers();
 }
 
@@ -1071,17 +1180,24 @@ async function loadAdminUsers() {
   adminError = "";
   render();
   try {
-    const payload = await adminApiRequest(`/api/admin/users?status=${encodeURIComponent(adminStatusFilter)}`);
+    const params = new URLSearchParams({ status: adminStatusFilter });
+    if (adminSearchQuery) params.set("q", adminSearchQuery);
+    const payload = await adminApiRequest(`/api/admin/users?${params.toString()}`);
     adminUsers = payload.users || [];
-    adminLoadedStatus = adminStatusFilter;
+    adminCounts = payload.counts || { pending: 0, approved: 0, rejected: 0 };
+    adminLoadedStatus = getAdminLoadedKey();
   } catch (error) {
     adminUsers = [];
-    adminLoadedStatus = adminStatusFilter;
+    adminLoadedStatus = getAdminLoadedKey();
     adminError = formatAdminError(error);
   } finally {
     adminLoading = false;
     render();
   }
+}
+
+function getAdminLoadedKey() {
+  return `${adminStatusFilter}:${adminSearchQuery}`;
 }
 
 function formatAdminError(error) {
@@ -1098,7 +1214,7 @@ function formatAdminError(error) {
   return error?.message || "가입 신청 목록을 불러오지 못했습니다.";
 }
 
-async function updateAdminApproval(userId, approvalStatus) {
+async function updateAdminApproval(userId, approvalStatus, adminNote = "", options = {}) {
   if (!getAdminToken()) {
     showToast("관리자 토큰을 먼저 저장해주세요.");
     return;
@@ -1109,10 +1225,10 @@ async function updateAdminApproval(userId, approvalStatus) {
   try {
     await adminApiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
       method: "PATCH",
-      body: { approvalStatus }
+      body: { approvalStatus, adminNote }
     });
     adminLoadedStatus = "";
-    showToast(`${renderApprovalStatusLabel(approvalStatus)} 처리했습니다.`);
+    showToast(options.noteOnly ? "운영 메모를 저장했습니다." : `${renderApprovalStatusLabel(approvalStatus)} 처리했습니다.`);
     await loadAdminUsers();
   } catch (error) {
     adminError = error.message || "승인 상태를 변경하지 못했습니다.";
@@ -2588,11 +2704,13 @@ function renderLabMetric(log, key, previous = null, selectedKey = "crea") {
   const value = log.values?.[key];
   const delta = previous ? renderLabDelta(value, previous.values?.[key], field) : "첫 기록";
   const isActive = selectedKey === key;
+  const referenceStatus = getLabReferenceStatus(value, key);
   return `
     <button class="metric lab-metric ${isActive ? "is-active" : ""}" type="button" data-action="select-lab-trend" data-key="${escapeAttr(key)}" aria-pressed="${isActive}">
       <div class="metric-label">${escapeHTML(field?.label || key)}</div>
       <div class="metric-value">${formatLabValue(value, field)}</div>
       <div class="metric-note">${delta}</div>
+      <div class="reference-note ${referenceStatus}">${escapeHTML(renderLabReferenceNote(value, key, field))}</div>
     </button>
   `;
 }
@@ -2639,6 +2757,9 @@ function renderLabTrendPanel(logs, selectedKey) {
       <div class="canvas-wrap">
         <canvas id="lab-trend-chart" aria-label="${escapeAttr(field.label)} ${escapeAttr(rangeOption.title)} 추세 차트"></canvas>
       </div>
+      <p class="reference-disclaimer">
+        ${escapeHTML(renderLabReferenceNote(latest?.value, selectedKey, field))}. 병원 장비와 검사지 참고범위를 우선하세요.
+      </p>
       <div class="grid four lab-trend-stats">
         ${renderTrendStat("최근", latest ? formatLabValue(latest.value, field) : "-", latest?.date || "-")}
         ${renderTrendStat("최저", minPoint ? formatLabValue(minPoint.value, field) : "-", minPoint?.date || "-")}
@@ -3058,8 +3179,10 @@ function handleAction(actionName, element) {
   if (actionName === "admin-clear-token") {
     clearAdminToken();
     adminUsers = [];
+    adminSearchQuery = "";
     adminLoadedStatus = "";
     adminError = "";
+    adminCounts = { pending: 0, approved: 0, rejected: 0 };
     showToast("관리자 토큰을 삭제했습니다.");
     render();
     return;
@@ -3078,8 +3201,17 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "admin-search-clear") {
+    adminSearchQuery = "";
+    adminLoadedStatus = "";
+    render();
+    return;
+  }
+
   if (actionName === "admin-approval") {
-    updateAdminApproval(element.dataset.id, element.dataset.status);
+    const card = element.closest(".admin-user-card");
+    const adminNote = card?.querySelector("[name='adminNote']")?.value || "";
+    updateAdminApproval(element.dataset.id, element.dataset.status, adminNote);
     return;
   }
 
@@ -3268,6 +3400,12 @@ function handleAction(actionName, element) {
 
   if (actionName === "export-data") {
     exportData();
+    return;
+  }
+
+  if (actionName === "delete-account") {
+    deleteCurrentAccount();
+    return;
   }
 }
 
@@ -3283,10 +3421,27 @@ async function handleForm(formName, form) {
     }
     setAdminToken(token);
     adminStatusFilter = "pending";
+    adminSearchQuery = "";
+    adminCounts = { pending: 0, approved: 0, rejected: 0 };
     adminLoadedStatus = "";
     adminError = "";
     showToast("관리자 토큰을 저장했습니다.");
     render();
+    return;
+  }
+
+  if (formName === "admin-search") {
+    adminSearchQuery = String(data.get("query") || "").trim();
+    adminLoadedStatus = "";
+    render();
+    return;
+  }
+
+  if (formName === "admin-note") {
+    const userId = String(data.get("userId") || "");
+    const approvalStatus = String(data.get("approvalStatus") || "pending");
+    const adminNote = String(data.get("adminNote") || "").trim();
+    updateAdminApproval(userId, approvalStatus, adminNote, { noteOnly: true });
     return;
   }
 
@@ -4151,6 +4306,30 @@ function getLabField(key) {
   };
 }
 
+function getLabReferenceRange(key) {
+  return labReferenceRanges[key] || null;
+}
+
+function getLabReferenceStatus(value, key) {
+  const range = getLabReferenceRange(key);
+  const number = Number(value);
+  if (!range || !Number.isFinite(number)) return "unknown";
+  if (number < range.low) return "low";
+  if (number > range.high) return "high";
+  return "in";
+}
+
+function renderLabReferenceNote(value, key, field = getLabField(key)) {
+  const range = getLabReferenceRange(key);
+  if (!range) return "참고범위 미설정";
+  const status = getLabReferenceStatus(value, key);
+  const rangeText = `${formatNumber(range.low, field?.digits ?? 2)}-${formatNumber(range.high, field?.digits ?? 2)}${field?.unit ? ` ${field.unit}` : ""}`;
+  if (status === "low") return `일반 참고보다 낮음 · ${rangeText}`;
+  if (status === "high") return `일반 참고보다 높음 · ${rangeText}`;
+  if (status === "in") return `일반 참고범위 내 · ${rangeText}`;
+  return `일반 참고범위 ${rangeText}`;
+}
+
 function calorieProfile(cat) {
   const weight = Math.max(toNumber(cat.weightKg), 0.1);
   const ageYears = getCatAgeYears(cat);
@@ -4447,6 +4626,8 @@ function drawLabTrendChart(canvasId, logs, key, rangeKey = getSelectedLabTrendRa
 
   const padding = { top: 26, right: 24, bottom: 40, left: 58 };
   const values = trendLogs.map((log) => log.value);
+  const referenceRange = getLabReferenceRange(key);
+  if (referenceRange) values.push(referenceRange.low, referenceRange.high);
   let min = Math.min(...values);
   let max = Math.max(...values);
   if (min === max) {
@@ -4484,6 +4665,17 @@ function drawLabTrendChart(canvasId, logs, key, rangeKey = getSelectedLabTrendRa
       ? padding.left + plotW / 2
       : padding.left + (daysBetween(first.date, log.date) / totalDays) * plotW;
   const yFor = (value) => padding.top + ((max - value) / (max - min)) * plotH;
+
+  if (referenceRange) {
+    const yLow = yFor(referenceRange.low);
+    const yHigh = yFor(referenceRange.high);
+    ctx.fillStyle = "rgba(16, 185, 129, 0.1)";
+    ctx.fillRect(padding.left, yHigh, plotW, Math.max(2, yLow - yHigh));
+    ctx.fillStyle = "#69938b";
+    ctx.font = "11px sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText("일반 참고범위", padding.left + 6, yHigh + 14);
+  }
 
   if (trendLogs.length > 1) {
     ctx.strokeStyle = "#0f766e";
@@ -4807,6 +4999,67 @@ function exportData() {
   link.download = `sinego-care-${todayISO()}.json`;
   link.click();
   URL.revokeObjectURL(url);
+}
+
+async function deleteCurrentAccount() {
+  const user = currentUser();
+  if (!user) {
+    showToast("로그인이 필요합니다.");
+    render();
+    return;
+  }
+  const confirmed = confirm(
+    `${user.name} 계정과 저장된 모든 케어 기록을 삭제할까요?\n\n삭제 후에는 복구할 수 없습니다.`
+  );
+  if (!confirmed) return;
+
+  try {
+    if (getAuthToken()) {
+      await apiRequest("/api/account", { method: "DELETE", auth: true });
+    }
+  } catch (error) {
+    if (!shouldUseLocalFallback(error)) {
+      showToast(error.message || "계정을 삭제하지 못했습니다.");
+      render();
+      return;
+    }
+  }
+
+  removeUserData(user.id);
+  clearAuthToken();
+  state.sessionUserId = null;
+  state.pendingSignup = null;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  showToast("회원 탈퇴와 데이터 삭제가 완료되었습니다.");
+  render();
+}
+
+function removeUserData(userId) {
+  state.users = state.users.filter((user) => user.id !== userId);
+  state.cats = state.cats.filter((cat) => cat.userId !== userId);
+  state.fluidPlans = state.fluidPlans.filter((plan) => plan.userId !== userId);
+  state.fluidLogs = state.fluidLogs.filter((log) => log.userId !== userId);
+  state.medicationPlans = state.medicationPlans.filter((plan) => plan.userId !== userId);
+  state.medicationLogs = state.medicationLogs.filter((log) => log.userId !== userId);
+  state.symptomLogs = state.symptomLogs.filter((log) => log.userId !== userId);
+  state.labLogs = state.labLogs.filter((log) => log.userId !== userId);
+  state.weightLogs = state.weightLogs.filter((log) => log.userId !== userId);
+  state.customFoods = state.customFoods.filter((food) => food.userId !== userId);
+  state.customResources = state.customResources.filter((resource) => resource.userId !== userId);
+  state.posts = state.posts
+    .filter((post) => post.userId !== userId)
+    .map((post) => ({
+      ...post,
+      comments: Array.isArray(post.comments)
+        ? post.comments.filter((comment) => comment.userId !== userId)
+        : []
+    }));
+  if (state.activeCatId && !state.cats.some((cat) => cat.id === state.activeCatId)) {
+    state.activeCatId = null;
+  }
+  if (state.editingCatId && !state.cats.some((cat) => cat.id === state.editingCatId)) {
+    state.editingCatId = null;
+  }
 }
 
 function renderCatOptions(selectedId) {

@@ -340,6 +340,23 @@ button.metric {
   font-size: 12px;
 }
 
+.reference-note {
+  margin-top: 6px;
+  color: #66736f;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.reference-note.in {
+  color: #0f766e;
+}
+
+.reference-note.low,
+.reference-note.high {
+  color: #a25100;
+}
+
 .metric.good {
   border-color: #b6ead8;
   background: #f0fdfa;
@@ -415,6 +432,55 @@ button.metric {
   font-size: 20px;
   font-weight: 850;
   letter-spacing: 0;
+}
+
+.reference-disclaimer {
+  margin: -4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.admin-note-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-note-form label {
+  color: #24403d;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.btn-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: 999px;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.24);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.btn.secondary .btn-count,
+.btn.ghost .btn-count {
+  background: #e6f1ed;
+}
+
+.privacy-list {
+  display: grid;
+  gap: 10px;
 }
 
 .auth-grid {
@@ -1001,6 +1067,10 @@ canvas {
   }
 
   .timeline-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-search {
     grid-template-columns: 1fr;
   }
 

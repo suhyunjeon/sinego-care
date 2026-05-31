@@ -54,6 +54,7 @@ async function ensureSchema() {
         password_iterations INTEGER NOT NULL DEFAULT 210000,
         approval_status TEXT NOT NULL DEFAULT 'pending'
           CHECK (approval_status IN ('pending', 'approved', 'rejected')),
+        admin_note TEXT NOT NULL DEFAULT '',
         approval_requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         approved_at TIMESTAMPTZ,
         rejected_at TIMESTAMPTZ,
@@ -78,6 +79,9 @@ async function ensureSchema() {
         ON app_users (approval_status, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_app_sessions_user_id
         ON app_sessions (user_id);
+
+      ALTER TABLE app_users
+        ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT '';
     `).catch((error) => {
       schemaReadyPromise = null;
       throw error;
@@ -167,6 +171,16 @@ function publicUser(row) {
     approvalRequestedAt: row.approval_requested_at,
     approvedAt: row.approved_at,
     createdAt: row.created_at
+  };
+}
+
+function adminUser(row) {
+  if (!row) return null;
+  return {
+    ...publicUser(row),
+    adminNote: row.admin_note || "",
+    rejectedAt: row.rejected_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -328,16 +342,38 @@ async function handlePutState(req, res) {
 async function handleAdminUsers(req, res, url) {
   const db = await requireDb(res);
   if (!db || !requireAdmin(req, res)) return;
-  const status = url.searchParams.get("status") || "pending";
+  const requestedStatus = url.searchParams.get("status") || "pending";
+  const status = ["pending", "approved", "rejected"].includes(requestedStatus) ? requestedStatus : "pending";
+  const query = normalizeText(url.searchParams.get("q"));
+  const params = [status];
+  const filters = ["approval_status = $1"];
+  if (query) {
+    params.push(`%${query}%`);
+    filters.push(
+      `(cafe_nickname ILIKE $${params.length}
+        OR naver_id ILIKE $${params.length}
+        OR email ILIKE $${params.length}
+        OR admin_note ILIKE $${params.length})`
+    );
+  }
   const result = await db.query(
     `SELECT *
        FROM app_users
-      WHERE approval_status = $1
+      WHERE ${filters.join(" AND ")}
       ORDER BY created_at DESC
       LIMIT 200`,
-    [status]
+    params
   );
-  sendJson(res, 200, { ok: true, users: result.rows.map(publicUser) });
+  const countsResult = await db.query(
+    `SELECT approval_status, count(*)::int AS count
+       FROM app_users
+      GROUP BY approval_status`
+  );
+  const counts = { pending: 0, approved: 0, rejected: 0 };
+  countsResult.rows.forEach((row) => {
+    counts[row.approval_status] = row.count;
+  });
+  sendJson(res, 200, { ok: true, users: result.rows.map(adminUser), counts });
 }
 
 async function handleAdminApproval(req, res, userId) {
@@ -345,6 +381,7 @@ async function handleAdminApproval(req, res, userId) {
   if (!db || !requireAdmin(req, res)) return;
   const body = await readJson(req);
   const approvalStatus = String(body.approvalStatus || "");
+  const adminNote = normalizeText(body.adminNote).slice(0, 1000);
   if (!["approved", "rejected", "pending"].includes(approvalStatus)) {
     sendError(res, 400, "approvalStatus는 pending, approved, rejected 중 하나여야 합니다.", "invalid_approval_status");
     return;
@@ -352,18 +389,26 @@ async function handleAdminApproval(req, res, userId) {
   const result = await db.query(
     `UPDATE app_users
         SET approval_status = $1,
-            approved_at = CASE WHEN $1 = 'approved' THEN now() ELSE approved_at END,
-            rejected_at = CASE WHEN $1 = 'rejected' THEN now() ELSE rejected_at END,
+            admin_note = $2,
+            approved_at = CASE WHEN $1 = 'approved' AND approval_status <> 'approved' THEN now() ELSE approved_at END,
+            rejected_at = CASE WHEN $1 = 'rejected' AND approval_status <> 'rejected' THEN now() ELSE rejected_at END,
             updated_at = now()
-      WHERE id = $2
+      WHERE id = $3
       RETURNING *`,
-    [approvalStatus, userId]
+    [approvalStatus, adminNote, userId]
   );
   if (!result.rows[0]) {
     sendError(res, 404, "회원을 찾을 수 없습니다.", "user_not_found");
     return;
   }
-  sendJson(res, 200, { ok: true, user: publicUser(result.rows[0]) });
+  sendJson(res, 200, { ok: true, user: adminUser(result.rows[0]) });
+}
+
+async function handleDeleteAccount(req, res) {
+  const context = await requireUser(req, res);
+  if (!context) return;
+  await context.db.query("DELETE FROM app_users WHERE id = $1", [context.user.id]);
+  sendJson(res, 200, { ok: true });
 }
 
 async function handleApi(req, res, url) {
@@ -387,6 +432,10 @@ async function handleApi(req, res, url) {
     }
     if (req.method === "PUT" && url.pathname === "/api/state") {
       await handlePutState(req, res);
+      return;
+    }
+    if (req.method === "DELETE" && url.pathname === "/api/account") {
+      await handleDeleteAccount(req, res);
       return;
     }
     if (req.method === "GET" && url.pathname === "/api/admin/users") {
