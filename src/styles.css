@@ -293,6 +293,35 @@ a {
   background: var(--surface);
 }
 
+button.metric {
+  width: 100%;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lab-metric {
+  transition:
+    border-color 0.16s ease,
+    box-shadow 0.16s ease,
+    background 0.16s ease,
+    transform 0.16s ease;
+}
+
+.lab-metric:hover,
+.lab-metric:focus-visible {
+  border-color: #89c9bb;
+  background: #f7fffc;
+  outline: none;
+}
+
+.lab-metric.is-active {
+  border-color: var(--teal);
+  background: #eefaf7;
+  box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.13);
+}
+
 .metric-label {
   color: var(--muted);
   font-size: 13px;
@@ -324,6 +353,31 @@ a {
 .metric.hot {
   border-color: #f5b3ac;
   background: #fff4f2;
+}
+
+.lab-trend {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.lab-trend .canvas-wrap {
+  min-height: 282px;
+}
+
+.trend-stat {
+  min-height: 96px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 13px;
+  background: #ffffff;
+}
+
+.trend-stat-value {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 850;
+  letter-spacing: 0;
 }
 
 .auth-grid {

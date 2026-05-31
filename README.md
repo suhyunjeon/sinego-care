@@ -63,19 +63,19 @@ PostgreSQL 연동을 위해 Render Static Site가 아니라 Node Web Service로 
 브라우저 관리자 화면은 `/admin`에서 사용할 수 있습니다.
 
 - 로컬: `http://localhost:5173/admin`
-- 배포: `https://sinego-care.onrender.com/admin`
+- 배포: `<서비스 주소>/admin`
 
 관리자 화면에서 `ADMIN_TOKEN`을 입력하면 승인 대기, 승인됨, 보류 회원을 확인하고 상태를 변경할 수 있습니다.
 
 ```bash
 curl -H "x-admin-token: $ADMIN_TOKEN" \
-  "https://sinego-care.onrender.com/api/admin/users?status=pending"
+  "<서비스 주소>/api/admin/users?status=pending"
 
 curl -X PATCH \
   -H "content-type: application/json" \
   -H "x-admin-token: $ADMIN_TOKEN" \
   -d '{"approvalStatus":"approved"}' \
-  "https://sinego-care.onrender.com/api/admin/users/USER_ID"
+  "<서비스 주소>/api/admin/users/USER_ID"
 ```
 
 ## 포함 기능

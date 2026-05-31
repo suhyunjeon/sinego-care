@@ -168,6 +168,9 @@ const labFieldGroups = [
   }
 ];
 
+const labSummaryKeys = ["bun", "crea", "sdma", "phos", "ph", "hct", "fpl", "usg"];
+const labTrendWindowDays = 92;
+
 const PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
 const PDFJS_WORKER_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
 
@@ -411,7 +414,8 @@ function defaultState() {
     selectedFoodId: "seed_renal_dry",
     nutritionResult: null,
     mixResult: null,
-    snackResult: null
+    snackResult: null,
+    selectedLabTrendKey: "crea"
   };
 }
 
@@ -635,6 +639,10 @@ function render() {
     syncActiveTabPosition();
     if (active === "weight") drawWeightChart("weight-chart", getActiveCatWeightLogs());
     if (active === "dashboard") drawWeightChart("dashboard-weight-chart", getActiveCatWeightLogs());
+    if (active === "labs") {
+      const labLogs = getActiveCatLabLogs();
+      drawLabTrendChart("lab-trend-chart", labLogs, getSelectedLabTrendKey(labLogs));
+    }
   });
 }
 
@@ -2435,6 +2443,7 @@ function renderLabsView() {
   const logs = getActiveCatLabLogs();
   const latest = logs.at(-1);
   const previous = logs.length > 1 ? logs.at(-2) : null;
+  const selectedTrendKey = getSelectedLabTrendKey(logs);
 
   return `
     <section class="view-title">
@@ -2505,18 +2514,14 @@ function renderLabsView() {
           </div>
           ${
             latest
-              ? `<div class="grid two">
-                  ${renderLabMetric(latest, "bun", previous)}
-                  ${renderLabMetric(latest, "crea", previous)}
-                  ${renderLabMetric(latest, "sdma", previous)}
-                  ${renderLabMetric(latest, "phos", previous)}
-                  ${renderLabMetric(latest, "ph", previous)}
-                  ${renderLabMetric(latest, "hct", previous)}
-                  ${renderLabMetric(latest, "fpl", previous)}
-                  ${renderLabMetric(latest, "usg", previous)}
+              ? `<div class="grid two lab-metrics">
+                  ${labSummaryKeys
+                    .map((key) => renderLabMetric(latest, key, previous, selectedTrendKey))
+                    .join("")}
                 </div>`
               : `<div class="empty">검사 수치를 저장하면 주요 수치가 표시됩니다.</div>`
           }
+          ${renderLabTrendPanel(logs, selectedTrendKey)}
         </div>
       </section>
     </div>
@@ -2564,15 +2569,61 @@ function renderLabInput(field) {
   `;
 }
 
-function renderLabMetric(log, key, previous = null) {
+function renderLabMetric(log, key, previous = null, selectedKey = "crea") {
   const field = getLabField(key);
   const value = log.values?.[key];
   const delta = previous ? renderLabDelta(value, previous.values?.[key], field) : "첫 기록";
+  const isActive = selectedKey === key;
   return `
-    <div class="metric">
+    <button class="metric lab-metric ${isActive ? "is-active" : ""}" type="button" data-action="select-lab-trend" data-key="${escapeAttr(key)}" aria-pressed="${isActive}">
       <div class="metric-label">${escapeHTML(field?.label || key)}</div>
       <div class="metric-value">${formatLabValue(value, field)}</div>
       <div class="metric-note">${delta}</div>
+    </button>
+  `;
+}
+
+function renderLabTrendPanel(logs, selectedKey) {
+  const field = getLabField(selectedKey);
+  const trendLogs = getLabTrendLogs(logs, selectedKey);
+  const latest = trendLogs.at(-1);
+  const first = trendLogs[0];
+  const minPoint = trendLogs.reduce((min, point) => (point.value < min.value ? point : min), latest);
+  const maxPoint = trendLogs.reduce((max, point) => (point.value > max.value ? point : max), latest);
+  const changeText =
+    latest && first && trendLogs.length > 1
+      ? formatLabTrendChange(latest.value, first.value, field)
+      : trendLogs.length === 1
+        ? "기록 1개"
+        : "-";
+
+  return `
+    <div class="lab-trend">
+      <div class="panel-head">
+        <div>
+          <h2>${escapeHTML(field.label)} 최근 3개월 추세</h2>
+          <p>${trendLogs.length ? `${trendLogs.length}개 기록 기준` : "선택한 항목의 기록이 없습니다."}</p>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="lab-trend-chart" aria-label="${escapeAttr(field.label)} 최근 3개월 추세 차트"></canvas>
+      </div>
+      <div class="grid four lab-trend-stats">
+        ${renderTrendStat("최근", latest ? formatLabValue(latest.value, field) : "-", latest?.date || "-")}
+        ${renderTrendStat("최저", minPoint ? formatLabValue(minPoint.value, field) : "-", minPoint?.date || "-")}
+        ${renderTrendStat("최고", maxPoint ? formatLabValue(maxPoint.value, field) : "-", maxPoint?.date || "-")}
+        ${renderTrendStat("변화", changeText, first && latest ? `${first.date.slice(5)} → ${latest.date.slice(5)}` : "-")}
+      </div>
+    </div>
+  `;
+}
+
+function renderTrendStat(label, value, note) {
+  return `
+    <div class="trend-stat">
+      <div class="metric-label">${escapeHTML(label)}</div>
+      <div class="trend-stat-value">${escapeHTML(value)}</div>
+      <div class="metric-note">${escapeHTML(note)}</div>
     </div>
   `;
 }
@@ -2973,6 +3024,13 @@ function handleAction(actionName, element) {
 
   if (actionName === "select-cat") {
     state.activeCatId = element.dataset.id;
+    saveState();
+    render();
+    return;
+  }
+
+  if (actionName === "select-lab-trend") {
+    state.selectedLabTrendKey = element.dataset.key || "crea";
     saveState();
     render();
     return;
@@ -3719,6 +3777,36 @@ function getActiveCatLabLogs() {
     .sort((a, b) => `${a.date}T${a.createdAt || ""}`.localeCompare(`${b.date}T${b.createdAt || ""}`));
 }
 
+function getSelectedLabTrendKey(logs = []) {
+  const fieldKeys = getLabFields().map((field) => field.key);
+  const selectedKey = state.selectedLabTrendKey || "crea";
+  if (fieldKeys.includes(selectedKey)) return selectedKey;
+  return (
+    labSummaryKeys.find((key) => logs.some((log) => Number.isFinite(Number(log.values?.[key])))) ||
+    "crea"
+  );
+}
+
+function getLabTrendLogs(logs, key) {
+  const points = logs
+    .map((log) => ({ ...log, value: Number(log.values?.[key]) }))
+    .filter((log) => log.date && Number.isFinite(log.value));
+  const anchorDate = points.at(-1)?.date || logs.at(-1)?.date || todayISO();
+  return points.filter((log) => {
+    const distance = daysBetween(log.date, anchorDate);
+    return distance >= 0 && distance <= labTrendWindowDays;
+  });
+}
+
+function formatLabTrendChange(latestValue, firstValue, field) {
+  const delta = Number(latestValue) - Number(firstValue);
+  if (!Number.isFinite(delta)) return "-";
+  if (Math.abs(delta) < 0.0001) return "변화 없음";
+  const sign = delta > 0 ? "+" : "";
+  const unit = field?.unit ? ` ${field.unit}` : "";
+  return `${sign}${formatNumber(delta, field?.digits ?? 2)}${unit}`;
+}
+
 function getFoods() {
   const user = currentUser();
   const custom = user
@@ -4214,42 +4302,194 @@ function drawWeightChart(canvasId, logs) {
   ctx.fillText(last.date.slice(5), width - padding.right, height - 14);
 }
 
-function createDemoLabLog(user, cat) {
+function drawLabTrendChart(canvasId, logs, key) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const field = getLabField(key);
+  const trendLogs = getLabTrendLogs(logs, key);
+  const rect = canvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+  canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+  const ctx = canvas.getContext("2d");
+  ctx.scale(dpr, dpr);
+  const width = rect.width;
+  const height = rect.height;
+  ctx.clearRect(0, 0, width, height);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "#d9e7e1";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(0.5, 0.5, width - 1, height - 1);
+
+  if (!trendLogs.length) {
+    ctx.fillStyle = "#66736f";
+    ctx.font = "14px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("선택한 항목의 기록이 없습니다.", width / 2, height / 2);
+    return;
+  }
+
+  const padding = { top: 26, right: 24, bottom: 40, left: 58 };
+  const values = trendLogs.map((log) => log.value);
+  let min = Math.min(...values);
+  let max = Math.max(...values);
+  if (min === max) {
+    const buffer = field.digits >= 3 ? 0.005 : Math.max(0.2, Math.abs(max) * 0.05);
+    min -= buffer;
+    max += buffer;
+  } else {
+    const buffer = (max - min) * 0.12;
+    min -= buffer;
+    max += buffer;
+  }
+
+  const plotW = width - padding.left - padding.right;
+  const plotH = height - padding.top - padding.bottom;
+
+  ctx.strokeStyle = "#e5eee9";
+  ctx.fillStyle = "#66736f";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "right";
+  for (let i = 0; i <= 4; i += 1) {
+    const y = padding.top + (plotH / 4) * i;
+    const value = max - ((max - min) / 4) * i;
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+    ctx.fillText(formatNumber(value, field.digits ?? 2), padding.left - 8, y + 4);
+  }
+
+  const first = trendLogs[0];
+  const last = trendLogs.at(-1);
+  const totalDays = Math.max(daysBetween(first.date, last.date), 1);
+  const xFor = (log) =>
+    trendLogs.length === 1
+      ? padding.left + plotW / 2
+      : padding.left + (daysBetween(first.date, log.date) / totalDays) * plotW;
+  const yFor = (value) => padding.top + ((max - value) / (max - min)) * plotH;
+
+  if (trendLogs.length > 1) {
+    ctx.strokeStyle = "#0f766e";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    trendLogs.forEach((log, index) => {
+      const x = xFor(log);
+      const y = yFor(log.value);
+      if (index === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }
+
+  trendLogs.forEach((log) => {
+    const x = xFor(log);
+    const y = yFor(log.value);
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#0f766e";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = "#66736f";
+  ctx.font = "12px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillText(first.date.slice(5), padding.left, height - 14);
+  ctx.textAlign = "right";
+  ctx.fillText(last.date.slice(5), width - padding.right, height - 14);
+  if (field.unit) {
+    ctx.fillStyle = "#7a8581";
+    ctx.textAlign = "right";
+    ctx.fillText(field.unit, width - padding.right, padding.top - 8);
+  }
+}
+
+function createDemoLabLog(user, cat, overrides = {}) {
+  const values = {
+    bun: 26.7,
+    crea: 1.5,
+    sdma: 13.4,
+    phos: 4.1,
+    ph: 6.5,
+    ca: 11.5,
+    k: 3.33,
+    na: 150,
+    cl: 127,
+    hct: 42.7,
+    hgb: 13.3,
+    rbc: 9.29,
+    wbc: 5.72,
+    plt: 239,
+    retic: 39,
+    alb: 3,
+    tp: 7.9,
+    glob: 4.9,
+    alt: 62,
+    ast: 39,
+    alkp: 23,
+    glu: 147,
+    chol: 328,
+    fsaa: 3,
+    fpl: 2.1,
+    usg: 1.043,
+    upc: 0.04,
+    ...(overrides.values || {})
+  };
+
   return {
     id: uid("lab"),
     userId: user.id,
     catId: cat.id,
-    date: "2026-05-28",
-    hospital: "24시 동물의료센터",
-    reportName: "5.28 혈액검사지 예시",
-    values: {
-      bun: 26.7,
-      crea: 1.5,
-      ca: 11.5,
-      k: 3.33,
-      na: 150,
-      cl: 127,
-      hct: 42.7,
-      hgb: 13.3,
-      rbc: 9.29,
-      wbc: 5.72,
-      plt: 239,
-      retic: 39,
-      alb: 3,
-      tp: 7.9,
-      glob: 4.9,
-      alt: 62,
-      ast: 39,
-      alkp: 23,
-      glu: 147,
-      chol: 328,
-      fsaa: 3,
-      usg: 1.043,
-      upc: 0.04
-    },
-    notes: "첨부 예시 검사표의 주요 항목만 입력한 샘플입니다.",
-    createdAt: new Date().toISOString()
+    date: overrides.date || "2026-05-28",
+    hospital: overrides.hospital || "24시 동물의료센터",
+    reportName: overrides.reportName || "5.28 혈액검사지 예시",
+    values,
+    notes: overrides.notes || "첨부 예시 검사표의 주요 항목만 입력한 샘플입니다.",
+    createdAt: overrides.createdAt || new Date().toISOString()
   };
+}
+
+function createDemoLabTrendLogs(user, cat) {
+  return [
+    createDemoLabLog(user, cat, {
+      date: "2026-03-12",
+      reportName: "3.12 혈액검사지 예시",
+      values: {
+        bun: 33.4,
+        crea: 1.82,
+        sdma: 16.2,
+        phos: 4.8,
+        ph: 6.2,
+        hct: 39.8,
+        fpl: 3.4,
+        usg: 1.037,
+        upc: 0.08
+      },
+      notes: "둘러보기용 과거 혈검 기록입니다."
+    }),
+    createDemoLabLog(user, cat, {
+      date: "2026-04-18",
+      reportName: "4.18 혈액검사지 예시",
+      values: {
+        bun: 29.1,
+        crea: 1.66,
+        sdma: 14.8,
+        phos: 4.4,
+        ph: 6.4,
+        hct: 41.1,
+        fpl: 2.8,
+        usg: 1.04,
+        upc: 0.06
+      },
+      notes: "수액과 식이 관리 후 추세 확인용 예시입니다."
+    }),
+    createDemoLabLog(user, cat)
+  ];
 }
 
 function startDemo() {
@@ -4339,7 +4579,17 @@ function startDemo() {
   }
 
   if (!state.labLogs.some((log) => log.userId === user.id)) {
-    state.labLogs.push(createDemoLabLog(user, cat));
+    state.labLogs.push(...createDemoLabTrendLogs(user, cat));
+  } else {
+    const demoTrendDates = new Set(["2026-03-12", "2026-04-18", "2026-05-28"]);
+    const existingDemoDates = new Set(
+      state.labLogs
+        .filter((log) => log.userId === user.id && log.catId === cat.id)
+        .map((log) => log.date)
+    );
+    createDemoLabTrendLogs(user, cat)
+      .filter((log) => demoTrendDates.has(log.date) && !existingDemoDates.has(log.date))
+      .forEach((log) => state.labLogs.push(log));
   }
 
   if (!state.symptomLogs.some((log) => log.userId === user.id)) {
