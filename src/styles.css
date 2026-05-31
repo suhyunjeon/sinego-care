@@ -701,6 +701,19 @@ button.metric {
   gap: 8px;
 }
 
+.actions.center {
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.dashboard-cat-switcher {
+  margin-top: 12px;
+}
+
+.dashboard-cat-switcher .select.compact {
+  min-width: 160px;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -871,6 +884,50 @@ tr:last-child td {
 .timeline {
   display: grid;
   gap: 8px;
+}
+
+.timeline-collapse {
+  margin-top: 8px;
+}
+
+.timeline-collapse summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 42px;
+  border: 1px dashed #bdd2cb;
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #24403d;
+  background: #f7fbf9;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+  user-select: none;
+}
+
+.timeline-collapse summary::-webkit-details-marker {
+  display: none;
+}
+
+.timeline-collapse .timeline {
+  margin-top: 8px;
+}
+
+.timeline-collapse-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  border-radius: 8px;
+  padding: 0 9px;
+  background: #eaf6f1;
+  color: var(--teal);
+  font-size: 12px;
+}
+
+.timeline-collapse[open] .closed-label,
+.timeline-collapse:not([open]) .open-label {
+  display: none;
 }
 
 .timeline-row {

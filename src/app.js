@@ -816,7 +816,7 @@ function renderDashboardView() {
 
     <div class="grid sidebar" style="margin-top: 16px">
       <div class="grid">
-        ${renderCatPanel()}
+        ${renderDashboardCatPanel()}
         ${renderCaloriePanel(activeCat)}
       </div>
       <div class="grid">
@@ -1345,6 +1345,77 @@ function renderPendingSignupPanel(signup) {
   `;
 }
 
+function renderDashboardCatPanel() {
+  const cats = getUserCats();
+  const activeCat = getActiveCat();
+
+  if (!cats.length) {
+    return `
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>고양이</h2>
+              <p>첫 프로필을 등록하면 케어 기록을 시작할 수 있습니다.</p>
+            </div>
+          </div>
+          <div class="empty">
+            <p>등록된 고양이가 없습니다.</p>
+            <div class="actions center">
+              <button class="btn primary" data-tab="cats">고양이 등록하기</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    `;
+  }
+
+  const activeHealth = activeCat.health || [];
+  const visibleHealth = activeHealth.slice(0, 4);
+  const remainingHealthCount = Math.max(activeHealth.length - visibleHealth.length, 0);
+
+  return `
+    <section class="panel">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>고양이</h2>
+            <p>${cats.length}마리 등록됨 · 현재 케어 대상</p>
+          </div>
+          <button class="btn small secondary" data-tab="cats">고양이 관리</button>
+        </div>
+        <article class="item is-active dashboard-cat-card">
+          <div class="item-head">
+            <div>
+              <h3>${escapeHTML(activeCat.name)}</h3>
+              <p>${renderCatShortMeta(activeCat)}</p>
+              <div class="chips">
+                ${
+                  visibleHealth.length
+                    ? visibleHealth.map((key) => `<span class="chip">${escapeHTML(getHealthLabel(key))}</span>`).join("")
+                    : `<span class="chip">일반관리</span>`
+                }
+                ${remainingHealthCount ? `<span class="chip">+${remainingHealthCount}</span>` : ""}
+                <span class="chip amber">BCS ${activeCat.bcs}/9</span>
+              </div>
+            </div>
+          </div>
+        </article>
+        ${
+          cats.length > 1
+            ? `<label class="cat-switcher dashboard-cat-switcher">
+                <span>고양이 선택</span>
+                <select class="select compact" data-cat-switcher aria-label="홈 고양이 선택">
+                  ${renderCatOptions(activeCat.id)}
+                </select>
+              </label>`
+            : ""
+        }
+      </div>
+    </section>
+  `;
+}
+
 function renderCatPanel() {
   const user = currentUser();
   if (!user) {
@@ -1531,7 +1602,10 @@ function renderUpcomingPanel(upcoming) {
         </div>
         ${
           upcoming.length
-            ? `<div class="timeline">${upcoming.map(renderCareOccurrence).join("")}</div>`
+            ? renderCollapsibleTimeline(upcoming, renderCareOccurrence, "예정된 케어 일정이 없습니다.", {
+                initialCount: 3,
+                hiddenLabel: "나머지 케어 일정"
+              })
             : `<div class="empty">예정된 케어 일정이 없습니다.</div>`
         }
       </div>
@@ -1712,10 +1786,10 @@ function renderFluidView() {
           <div class="panel-head">
             <div>
               <h2>예정 일정</h2>
-              <p>완료를 누르면 기록에 남습니다.</p>
+              <p>가까운 일정 4개를 먼저 보여줍니다.</p>
             </div>
           </div>
-          ${upcoming.length ? `<div class="timeline">${upcoming.map(renderOccurrence).join("")}</div>` : `<div class="empty">예정된 수액 일정이 없습니다.</div>`}
+          ${renderCollapsibleTimeline(upcoming, renderOccurrence, "예정된 수액 일정이 없습니다.")}
         </div>
       </section>
     </div>
@@ -1921,14 +1995,10 @@ function renderMedicationView() {
           <div class="panel-head">
             <div>
               <h2>예정 투약</h2>
-              <p>완료를 누르면 기록에 남습니다.</p>
+              <p>가까운 일정 4개를 먼저 보여줍니다.</p>
             </div>
           </div>
-          ${
-            upcoming.length
-              ? `<div class="timeline">${upcoming.map(renderMedicationOccurrence).join("")}</div>`
-              : `<div class="empty">예정된 투약·영양제 일정이 없습니다.</div>`
-          }
+          ${renderCollapsibleTimeline(upcoming, renderMedicationOccurrence, "예정된 투약·영양제 일정이 없습니다.")}
         </div>
       </section>
     </div>
@@ -2019,6 +2089,33 @@ function renderMedicationOccurrence(item) {
         ${done ? "완료됨" : "완료"}
       </button>
     </div>
+  `;
+}
+
+function renderCollapsibleTimeline(items, renderer, emptyText, options = {}) {
+  if (!items.length) return `<div class="empty">${emptyText}</div>`;
+
+  const initialCount = options.initialCount || 4;
+  const visibleItems = items.slice(0, initialCount);
+  const hiddenItems = items.slice(initialCount);
+  const hiddenLabel = options.hiddenLabel || "나머지 일정";
+
+  return `
+    <div class="timeline">${visibleItems.map(renderer).join("")}</div>
+    ${
+      hiddenItems.length
+        ? `<details class="timeline-collapse">
+            <summary>
+              <span>${hiddenLabel} ${hiddenItems.length}개 보기</span>
+              <span class="timeline-collapse-state">
+                <span class="closed-label">펼치기</span>
+                <span class="open-label">접기</span>
+              </span>
+            </summary>
+            <div class="timeline">${hiddenItems.map(renderer).join("")}</div>
+          </details>`
+        : ""
+    }
   `;
 }
 
