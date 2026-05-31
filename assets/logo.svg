@@ -1,35 +1,54 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <rect x="40" y="40" width="432" height="432" rx="70" fill="#0F7C74"/>
-  
-  <polygon points="150,170 205,120 225,200" fill="#FFF8F4"/>
-  <polygon points="362,170 307,120 287,200" fill="#FFF8F4"/>
-  <polygon points="168,170 205,136 218,188" fill="#FFD6D6"/>
-  <polygon points="344,170 307,136 294,188" fill="#FFD6D6"/>
+<svg width="400" height="120" viewBox="0 0 400 120" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="신장질환을 이긴 고양이 케어">
+  <defs>
+    <linearGradient id="catGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14857a"/>
+      <stop offset="1" stop-color="#0f766e"/>
+    </linearGradient>
+    <linearGradient id="heartGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8c69"/>
+      <stop offset="1" stop-color="#f4795b"/>
+    </linearGradient>
+  </defs>
 
-  <circle cx="256" cy="245" r="125" fill="#FFF8F4"/>
+  <!-- Icon mark: rounded badge -->
+  <g transform="translate(8,12)">
+    <rect x="0" y="0" width="96" height="96" rx="30" fill="#fdf6ee"/>
+    <rect x="0" y="0" width="96" height="96" rx="30" fill="none" stroke="#0f766e" stroke-opacity="0.12" stroke-width="2"/>
 
-  <ellipse cx="205" cy="245" rx="28" ry="32" fill="#0F7C74"/>
-  <ellipse cx="307" cy="245" rx="28" ry="32" fill="#0F7C74"/>
-  <circle cx="196" cy="236" r="8" fill="white"/>
-  <circle cx="298" cy="236" r="8" fill="white"/>
+    <!-- Cat head (rounded, warm) -->
+    <g transform="translate(48,52)">
+      <!-- ears -->
+      <path d="M-26,-16 C-30,-34 -20,-38 -12,-26 C-20,-24 -24,-20 -26,-16 Z" fill="url(#catGrad)"/>
+      <path d="M26,-16 C30,-34 20,-38 12,-26 C20,-24 24,-20 26,-16 Z" fill="url(#catGrad)"/>
+      <!-- face -->
+      <ellipse cx="0" cy="2" rx="28" ry="25" fill="url(#catGrad)"/>
+      <!-- eyes -->
+      <circle cx="-10" cy="-2" r="3.4" fill="#fdf6ee"/>
+      <circle cx="10" cy="-2" r="3.4" fill="#fdf6ee"/>
+      <!-- nose -->
+      <path d="M-3,7 L3,7 L0,11 Z" fill="#ff8c69"/>
+      <!-- whiskers -->
+      <g stroke="#fdf6ee" stroke-width="1.6" stroke-linecap="round" opacity="0.85">
+        <path d="M-12,9 L-26,6"/>
+        <path d="M-12,12 L-26,13"/>
+        <path d="M12,9 L26,6"/>
+        <path d="M12,12 L26,13"/>
+      </g>
+    </g>
 
-  <ellipse cx="205" cy="295" rx="18" ry="12" fill="#FFC8C8"/>
-  <ellipse cx="307" cy="295" rx="18" ry="12" fill="#FFC8C8"/>
+    <!-- Care heart with cross, bottom-right -->
+    <g transform="translate(70,68)">
+      <path d="M0,6 C-6,-4 -20,-1 -16,9 C-13,16 0,24 0,24 C0,24 13,16 16,9 C20,-1 6,-4 0,6 Z" fill="url(#heartGrad)"/>
+      <g stroke="#fdf6ee" stroke-width="2.6" stroke-linecap="round">
+        <path d="M0,7 L0,15"/>
+        <path d="M-4,11 L4,11"/>
+      </g>
+    </g>
+  </g>
 
-  <path d="M240 270 Q256 285 272 270" stroke="#3A2B2B" stroke-width="5" fill="none"/>
-  <path d="M256 285 Q256 305 275 315 Q256 325 237 315 Q256 305 256 285Z" fill="#FF9AA2"/>
-  <path d="M248 268 L256 262 L264 268 Z" fill="#3A2B2B"/>
-
-  <line x1="140" y1="270" x2="180" y2="275" stroke="#203030" stroke-width="4" stroke-linecap="round"/>
-  <line x1="140" y1="290" x2="180" y2="290" stroke="#203030" stroke-width="4" stroke-linecap="round"/>
-  <line x1="332" y1="275" x2="372" y2="270" stroke="#203030" stroke-width="4" stroke-linecap="round"/>
-  <line x1="332" y1="290" x2="372" y2="290" stroke="#203030" stroke-width="4" stroke-linecap="round"/>
-
-  <ellipse cx="205" cy="390" rx="38" ry="32" fill="#FFF8F4"/>
-  <ellipse cx="307" cy="390" rx="38" ry="32" fill="#FFF8F4"/>
-
-  <rect x="220" y="360" width="72" height="18" rx="9" fill="#0B615A"/>
-  <circle cx="256" cy="388" r="18" fill="#F4C95D"/>
-  <path d="M256 379 C266 370, 279 381, 256 397 C233 381, 246 370, 256 379 Z" fill="#0F7C74"/>
+  <!-- Wordmark -->
+  <g transform="translate(124,0)">
+    <text x="0" y="52" font-family="'Noto Sans KR','Apple SD Gothic Neo',sans-serif" font-size="27" font-weight="800" fill="#0f766e" letter-spacing="-0.5">신장질환을 이긴</text>
+    <text x="0" y="85" font-family="'Noto Sans KR','Apple SD Gothic Neo',sans-serif" font-size="27" font-weight="800" fill="#0f766e" letter-spacing="-0.5">고양이 <tspan fill="#f4795b">케어</tspan></text>
+  </g>
 </svg>

@@ -643,11 +643,7 @@ function renderHeader() {
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand">
-          <img src="/assets/logo.svg" alt="" />
-          <div>
-            <span class="brand-name">신장질환을 이긴 고양이 케어</span>
-            <span class="brand-sub">환묘 케어 도구</span>
-          </div>
+          <img class="brand-logo" src="/assets/logo.svg" alt="신장질환을 이긴 고양이 케어" />
         </div>
         <nav class="tabs" aria-label="주요 메뉴">
           ${tabs
