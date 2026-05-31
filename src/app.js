@@ -17,7 +17,7 @@ const tabs = [
 ];
 
 const operatorName = "전수현";
-const supportAccountText = "";
+const supportAccountText = "카카오뱅크 79423347182 / 전수현";
 const supportLink = "";
 
 const healthOptions = {
@@ -859,7 +859,7 @@ function renderSupportView() {
           <div class="panel-head">
             <div>
               <h2>후원 방법</h2>
-              <p>계좌 또는 송금 링크가 정해지면 이 영역에 표시됩니다.</p>
+              <p>운영비와 서버비 후원 계좌입니다.</p>
             </div>
           </div>
           ${
