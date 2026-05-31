@@ -632,8 +632,18 @@ function render() {
   if (isAdmin) queueAdminUsersLoad();
 
   requestAnimationFrame(() => {
+    syncActiveTabPosition();
     if (active === "weight") drawWeightChart("weight-chart", getActiveCatWeightLogs());
     if (active === "dashboard") drawWeightChart("dashboard-weight-chart", getActiveCatWeightLogs());
+  });
+}
+
+function syncActiveTabPosition() {
+  const activeTab = document.querySelector(".tabs .tab.is-active");
+  if (!activeTab) return;
+  activeTab.scrollIntoView({
+    block: "nearest",
+    inline: "center"
   });
 }
 
@@ -643,7 +653,9 @@ function renderHeader() {
     <header class="topbar">
       <div class="topbar-inner">
         <div class="brand">
-          <img class="brand-logo" src="/assets/logo.svg" alt="신장질환을 이긴 고양이 케어" />
+          <button class="brand-button" type="button" data-tab="dashboard" aria-label="홈으로 이동">
+            <img class="brand-logo" src="/assets/logo.svg" alt="신장질환을 이긴 고양이 케어" />
+          </button>
         </div>
         <nav class="tabs" aria-label="주요 메뉴">
           ${tabs
