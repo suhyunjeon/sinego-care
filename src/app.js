@@ -775,11 +775,13 @@ function renderDashboardView() {
   const calorie = activeCat ? calorieProfile(activeCat) : null;
   const upcoming = user ? getUpcomingCareOccurrences({ limit: 5, catId: activeCat?.id }) : [];
   const lastWeight = getActiveCatWeightLogs().at(-1);
+  const todayLabel = formatTodayLabel();
 
   return `
     <section class="view-title">
       <div>
         <h1>오늘의 케어</h1>
+        <p class="view-date">${todayLabel}</p>
         <p>수액, 투약·영양제, 식사, 체중 기록을 한 화면에서 확인합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
       <div class="actions">
@@ -5181,6 +5183,13 @@ function formatDateTime(iso) {
   ).padStart(2, "0")} ${String(date.getHours()).padStart(2, "0")}:${String(
     date.getMinutes()
   ).padStart(2, "0")}`;
+}
+
+function formatTodayLabel(date = new Date()) {
+  const weekdays = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+  return `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, "0")}.${String(
+    date.getDate()
+  ).padStart(2, "0")} ${weekdays[date.getDay()]}`;
 }
 
 function formatNumber(value, digits = 0) {
