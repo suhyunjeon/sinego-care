@@ -169,7 +169,14 @@ const labFieldGroups = [
 ];
 
 const labSummaryKeys = ["bun", "crea", "sdma", "phos", "ph", "hct", "fpl", "usg"];
-const labTrendWindowDays = 92;
+const labTrendRanges = [
+  { key: "3m", label: "3개월", title: "최근 3개월", days: 92 },
+  { key: "6m", label: "6개월", title: "최근 6개월", days: 183 },
+  { key: "1y", label: "1년", title: "최근 1년", days: 366 },
+  { key: "all", label: "전체", title: "전체", days: null }
+];
+const weightTrendRanges = labTrendRanges;
+const trendPointGapPx = 14;
 
 const PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
 const PDFJS_WORKER_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.mjs";
@@ -415,7 +422,9 @@ function defaultState() {
     nutritionResult: null,
     mixResult: null,
     snackResult: null,
-    selectedLabTrendKey: "crea"
+    selectedLabTrendKey: "crea",
+    selectedLabTrendRange: "3m",
+    selectedWeightTrendRange: "3m"
   };
 }
 
@@ -637,11 +646,16 @@ function render() {
 
   requestAnimationFrame(() => {
     syncActiveTabPosition();
-    if (active === "weight") drawWeightChart("weight-chart", getActiveCatWeightLogs());
+    if (active === "weight") drawWeightChart("weight-chart", getWeightTrendLogs(getActiveCatWeightLogs()));
     if (active === "dashboard") drawWeightChart("dashboard-weight-chart", getActiveCatWeightLogs());
     if (active === "labs") {
       const labLogs = getActiveCatLabLogs();
-      drawLabTrendChart("lab-trend-chart", labLogs, getSelectedLabTrendKey(labLogs));
+      drawLabTrendChart(
+        "lab-trend-chart",
+        labLogs,
+        getSelectedLabTrendKey(labLogs),
+        getSelectedLabTrendRange()
+      );
     }
   });
 }
@@ -2585,7 +2599,9 @@ function renderLabMetric(log, key, previous = null, selectedKey = "crea") {
 
 function renderLabTrendPanel(logs, selectedKey) {
   const field = getLabField(selectedKey);
-  const trendLogs = getLabTrendLogs(logs, selectedKey);
+  const selectedRange = getSelectedLabTrendRange();
+  const rangeOption = getLabTrendRange(selectedRange);
+  const trendLogs = getLabTrendLogs(logs, selectedKey, selectedRange);
   const latest = trendLogs.at(-1);
   const first = trendLogs[0];
   const minPoint = trendLogs.reduce((min, point) => (point.value < min.value ? point : min), latest);
@@ -2601,12 +2617,27 @@ function renderLabTrendPanel(logs, selectedKey) {
     <div class="lab-trend">
       <div class="panel-head">
         <div>
-          <h2>${escapeHTML(field.label)} 최근 3개월 추세</h2>
+          <h2>${escapeHTML(field.label)} ${escapeHTML(rangeOption.title)} 추세</h2>
           <p>${trendLogs.length ? `${trendLogs.length}개 기록 기준` : "선택한 항목의 기록이 없습니다."}</p>
+        </div>
+        <div class="range-selector" role="group" aria-label="혈검 그래프 기간">
+          ${labTrendRanges
+            .map(
+              (option) => `
+                <button
+                  class="range-button ${option.key === selectedRange ? "is-active" : ""}"
+                  type="button"
+                  data-action="select-lab-trend-range"
+                  data-range="${escapeAttr(option.key)}"
+                  aria-pressed="${option.key === selectedRange}"
+                >${escapeHTML(option.label)}</button>
+              `
+            )
+            .join("")}
         </div>
       </div>
       <div class="canvas-wrap">
-        <canvas id="lab-trend-chart" aria-label="${escapeAttr(field.label)} 최근 3개월 추세 차트"></canvas>
+        <canvas id="lab-trend-chart" aria-label="${escapeAttr(field.label)} ${escapeAttr(rangeOption.title)} 추세 차트"></canvas>
       </div>
       <div class="grid four lab-trend-stats">
         ${renderTrendStat("최근", latest ? formatLabValue(latest.value, field) : "-", latest?.date || "-")}
@@ -2658,8 +2689,11 @@ function renderWeightView() {
   const user = currentUser();
   const activeCat = getActiveCat();
   const logs = getActiveCatWeightLogs();
-  const latest = logs.at(-1);
-  const first = logs[0];
+  const selectedRange = getSelectedWeightTrendRange();
+  const rangeOption = getWeightTrendRange(selectedRange);
+  const trendLogs = getWeightTrendLogs(logs, selectedRange);
+  const latest = trendLogs.at(-1);
+  const first = trendLogs[0];
   const delta = latest && first ? latest.weightKg - first.weightKg : 0;
 
   return `
@@ -2712,13 +2746,20 @@ function renderWeightView() {
         </div>
       </section>
 
-      <section class="panel">
+      <section class="panel weight-trend-panel">
         <div class="panel-inner">
           <div class="panel-head">
             <div>
-              <h2>체중 추세</h2>
-              <p>${logs.length ? `${logs.length}개 기록` : "기록 없음"}</p>
+              <h2>체중 ${escapeHTML(rangeOption.title)} 추세</h2>
+              <p>${
+                trendLogs.length
+                  ? `${trendLogs.length}개 기록 기준${trendLogs.length === logs.length ? "" : ` · 전체 ${logs.length}개`}`
+                  : logs.length
+                    ? "선택한 기간에 기록이 없습니다."
+                    : "기록 없음"
+              }</p>
             </div>
+            ${renderWeightRangeSelector(selectedRange)}
           </div>
           <div class="grid three">
             <div class="metric good">
@@ -2728,8 +2769,8 @@ function renderWeightView() {
             </div>
             <div class="metric">
               <div class="metric-label">변화</div>
-              <div class="metric-value">${logs.length > 1 ? `${delta >= 0 ? "+" : ""}${formatNumber(delta, 2)} kg` : "-"}</div>
-              <div class="metric-note">첫 기록 대비</div>
+              <div class="metric-value">${trendLogs.length > 1 ? `${delta >= 0 ? "+" : ""}${formatNumber(delta, 2)} kg` : "-"}</div>
+              <div class="metric-note">${trendLogs.length > 1 ? `${first.date.slice(5)} 대비` : "기간 내 기록 부족"}</div>
             </div>
             <div class="metric warn">
               <div class="metric-label">BCS</div>
@@ -2738,7 +2779,7 @@ function renderWeightView() {
             </div>
           </div>
           <div class="canvas-wrap" style="margin-top: 12px">
-            <canvas id="weight-chart" aria-label="체중 추세 차트"></canvas>
+            <canvas id="weight-chart" aria-label="체중 ${escapeAttr(rangeOption.title)} 추세 차트"></canvas>
           </div>
         </div>
       </section>
@@ -2773,6 +2814,26 @@ function renderWeightView() {
         }
       </div>
     </section>
+  `;
+}
+
+function renderWeightRangeSelector(selectedRange) {
+  return `
+    <div class="range-selector" role="group" aria-label="체중 그래프 기간">
+      ${weightTrendRanges
+        .map(
+          (option) => `
+            <button
+              class="range-button ${option.key === selectedRange ? "is-active" : ""}"
+              type="button"
+              data-action="select-weight-trend-range"
+              data-range="${escapeAttr(option.key)}"
+              aria-pressed="${option.key === selectedRange}"
+            >${escapeHTML(option.label)}</button>
+          `
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -3031,6 +3092,20 @@ function handleAction(actionName, element) {
 
   if (actionName === "select-lab-trend") {
     state.selectedLabTrendKey = element.dataset.key || "crea";
+    saveState();
+    render();
+    return;
+  }
+
+  if (actionName === "select-lab-trend-range") {
+    state.selectedLabTrendRange = element.dataset.range || "3m";
+    saveState();
+    render();
+    return;
+  }
+
+  if (actionName === "select-weight-trend-range") {
+    state.selectedWeightTrendRange = element.dataset.range || "3m";
     saveState();
     render();
     return;
@@ -3759,6 +3834,28 @@ function getActiveCatWeightLogs() {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+function getSelectedWeightTrendRange() {
+  const selectedRange = state.selectedWeightTrendRange || "3m";
+  return weightTrendRanges.some((range) => range.key === selectedRange) ? selectedRange : "3m";
+}
+
+function getWeightTrendRange(rangeKey = getSelectedWeightTrendRange()) {
+  return weightTrendRanges.find((range) => range.key === rangeKey) || weightTrendRanges[0];
+}
+
+function getWeightTrendLogs(logs, rangeKey = getSelectedWeightTrendRange()) {
+  const points = logs
+    .map((log) => ({ ...log, weightKg: Number(log.weightKg) }))
+    .filter((log) => log.date && Number.isFinite(log.weightKg));
+  const rangeOption = getWeightTrendRange(rangeKey);
+  if (!rangeOption.days) return points;
+  const anchorDate = points.at(-1)?.date || logs.at(-1)?.date || todayISO();
+  return points.filter((log) => {
+    const distance = daysBetween(log.date, anchorDate);
+    return distance >= 0 && distance <= rangeOption.days;
+  });
+}
+
 function getActiveCatSymptomLogs() {
   const cat = getActiveCat();
   if (!cat) return [];
@@ -3787,14 +3884,25 @@ function getSelectedLabTrendKey(logs = []) {
   );
 }
 
-function getLabTrendLogs(logs, key) {
+function getSelectedLabTrendRange() {
+  const selectedRange = state.selectedLabTrendRange || "3m";
+  return labTrendRanges.some((range) => range.key === selectedRange) ? selectedRange : "3m";
+}
+
+function getLabTrendRange(rangeKey = getSelectedLabTrendRange()) {
+  return labTrendRanges.find((range) => range.key === rangeKey) || labTrendRanges[0];
+}
+
+function getLabTrendLogs(logs, key, rangeKey = getSelectedLabTrendRange()) {
   const points = logs
     .map((log) => ({ ...log, value: Number(log.values?.[key]) }))
     .filter((log) => log.date && Number.isFinite(log.value));
+  const rangeOption = getLabTrendRange(rangeKey);
+  if (!rangeOption.days) return points;
   const anchorDate = points.at(-1)?.date || logs.at(-1)?.date || todayISO();
   return points.filter((log) => {
     const distance = daysBetween(log.date, anchorDate);
-    return distance >= 0 && distance <= labTrendWindowDays;
+    return distance >= 0 && distance <= rangeOption.days;
   });
 }
 
@@ -4265,35 +4373,41 @@ function drawWeightChart(canvasId, logs) {
     ctx.fillText(formatNumber(value, 2), padding.left - 8, y + 4);
   }
 
-  const xFor = (index) =>
-    padding.left + (logs.length === 1 ? plotW / 2 : (plotW / (logs.length - 1)) * index);
+  const first = logs[0];
+  const last = logs.at(-1);
+  const totalDays = Math.max(daysBetween(first.date, last.date), 1);
+  const xFor = (log) =>
+    logs.length === 1
+      ? padding.left + plotW / 2
+      : padding.left + (daysBetween(first.date, log.date) / totalDays) * plotW;
   const yFor = (value) => padding.top + ((max - value) / (max - min)) * plotH;
 
   ctx.strokeStyle = "#0f766e";
   ctx.lineWidth = 3;
   ctx.beginPath();
   logs.forEach((log, index) => {
-    const x = xFor(index);
+    const x = xFor(log);
     const y = yFor(log.weightKg);
     if (index === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   });
   ctx.stroke();
 
+  const visiblePointIndexes = getVisibleTrendPointIndexes(logs, xFor);
+  const pointRadius = logs.length > 80 ? 3 : 5;
   logs.forEach((log, index) => {
-    const x = xFor(index);
+    if (!visiblePointIndexes.has(index)) return;
+    const x = xFor(log);
     const y = yFor(log.weightKg);
     ctx.fillStyle = "#ffffff";
     ctx.strokeStyle = "#0f766e";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = logs.length > 80 ? 2 : 3;
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   });
 
-  const first = logs[0];
-  const last = logs.at(-1);
   ctx.fillStyle = "#66736f";
   ctx.font = "12px sans-serif";
   ctx.textAlign = "left";
@@ -4302,11 +4416,11 @@ function drawWeightChart(canvasId, logs) {
   ctx.fillText(last.date.slice(5), width - padding.right, height - 14);
 }
 
-function drawLabTrendChart(canvasId, logs, key) {
+function drawLabTrendChart(canvasId, logs, key, rangeKey = getSelectedLabTrendRange()) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const field = getLabField(key);
-  const trendLogs = getLabTrendLogs(logs, key);
+  const trendLogs = getLabTrendLogs(logs, key, rangeKey);
   const rect = canvas.getBoundingClientRect();
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.max(1, Math.floor(rect.width * dpr));
@@ -4384,14 +4498,17 @@ function drawLabTrendChart(canvasId, logs, key) {
     ctx.stroke();
   }
 
-  trendLogs.forEach((log) => {
+  const visiblePointIndexes = getVisibleTrendPointIndexes(trendLogs, xFor);
+  const pointRadius = trendLogs.length > 80 ? 3 : 5;
+  trendLogs.forEach((log, index) => {
+    if (!visiblePointIndexes.has(index)) return;
     const x = xFor(log);
     const y = yFor(log.value);
     ctx.fillStyle = "#ffffff";
     ctx.strokeStyle = "#0f766e";
-    ctx.lineWidth = 3;
+    ctx.lineWidth = trendLogs.length > 80 ? 2 : 3;
     ctx.beginPath();
-    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.arc(x, y, pointRadius, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   });
@@ -4407,6 +4524,21 @@ function drawLabTrendChart(canvasId, logs, key) {
     ctx.textAlign = "right";
     ctx.fillText(field.unit, width - padding.right, padding.top - 8);
   }
+}
+
+function getVisibleTrendPointIndexes(logs, xFor) {
+  if (logs.length <= 80) return new Set(logs.map((_, index) => index));
+  const indexes = new Set([0, logs.length - 1]);
+  let lastX = -Infinity;
+  logs.forEach((log, index) => {
+    const x = xFor(log);
+    if (x - lastX >= trendPointGapPx) {
+      indexes.add(index);
+      lastX = x;
+    }
+  });
+  indexes.add(logs.length - 1);
+  return indexes;
 }
 
 function createDemoLabLog(user, cat, overrides = {}) {

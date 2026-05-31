@@ -361,6 +361,43 @@ button.metric {
   margin-top: 18px;
 }
 
+.lab-trend .panel-head,
+.weight-trend-panel .panel-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.range-selector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.range-button {
+  min-height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 11px;
+  color: #24403d;
+  background: #ffffff;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.range-button:hover,
+.range-button:focus-visible {
+  border-color: #89c9bb;
+  background: #f7fffc;
+  outline: none;
+}
+
+.range-button.is-active {
+  border-color: var(--teal);
+  color: #ffffff;
+  background: var(--teal);
+}
+
 .lab-trend .canvas-wrap {
   min-height: 282px;
 }
@@ -973,6 +1010,15 @@ canvas {
 
   .metric-value {
     font-size: 23px;
+  }
+
+  .range-selector {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .range-button {
+    flex: 1 1 calc(50% - 6px);
   }
 
   .panel-inner {
