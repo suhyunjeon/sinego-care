@@ -1,15 +1,24 @@
 const STORAGE_KEY = "sinego-care-state-v1";
+const AUTH_TOKEN_KEY = "sinego-care-auth-token";
+const ADMIN_TOKEN_KEY = "sinego-care-admin-token";
+const REMOTE_SAVE_DELAY_MS = 800;
 
 const tabs = [
   { id: "dashboard", label: "홈" },
+  { id: "cats", label: "고양이" },
   { id: "fluid", label: "수액" },
   { id: "medication", label: "투약" },
   { id: "symptoms", label: "증상" },
   { id: "nutrition", label: "영양" },
   { id: "labs", label: "혈검" },
   { id: "weight", label: "체중" },
-  { id: "board", label: "게시판" }
+  { id: "board", label: "게시판" },
+  { id: "support", label: "후원" }
 ];
+
+const operatorName = "전수현";
+const supportAccountText = "";
+const supportLink = "";
 
 const healthOptions = {
   kidney: "신장질환",
@@ -258,13 +267,22 @@ const app = document.querySelector("#app");
 const state = loadState();
 let toastText = "";
 let toastTimer = null;
+let remoteSaveTimer = null;
+let isApplyingRemoteState = false;
+let adminUsers = [];
+let adminStatusFilter = "pending";
+let adminLoadedStatus = "";
+let adminLoading = false;
+let adminError = "";
 
 render();
+hydrateRemoteState();
 disableServiceWorkerCache();
 
 document.addEventListener("click", (event) => {
   const tab = event.target.closest("[data-tab]");
   if (tab) {
+    if (isAdminPath()) history.pushState({}, "", "/");
     state.activeTab = tab.dataset.tab;
     saveState();
     render();
@@ -286,6 +304,14 @@ document.addEventListener("submit", (event) => {
 });
 
 document.addEventListener("change", (event) => {
+  const catSwitcher = event.target.closest("[data-cat-switcher]");
+  if (catSwitcher) {
+    state.activeCatId = catSwitcher.value;
+    saveState();
+    render();
+    return;
+  }
+
   if (event.target.closest("#med-category")) {
     syncMedicationPresetPanel(event.target.form);
   }
@@ -309,6 +335,7 @@ function defaultState() {
     sessionUserId: null,
     activeTab: "dashboard",
     activeCatId: null,
+    editingCatId: null,
     users: [],
     cats: [],
     fluidPlans: [],
@@ -357,22 +384,173 @@ function loadState() {
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleRemoteSave();
+}
+
+function getAuthToken() {
+  return localStorage.getItem(AUTH_TOKEN_KEY) || "";
+}
+
+function setAuthToken(token) {
+  if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+}
+
+function clearAuthToken() {
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+}
+
+function getAdminToken() {
+  return localStorage.getItem(ADMIN_TOKEN_KEY) || "";
+}
+
+function setAdminToken(token) {
+  if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+}
+
+function clearAdminToken() {
+  localStorage.removeItem(ADMIN_TOKEN_KEY);
+}
+
+function isAdminPath() {
+  return window.location.pathname.replace(/\/$/, "") === "/admin";
+}
+
+function shouldUseLocalFallback(error) {
+  return !error?.status || error.status === 404 || error.status === 503;
+}
+
+async function apiRequest(path, { method = "GET", body = null, auth = false } = {}) {
+  const headers = { Accept: "application/json" };
+  if (body) headers["Content-Type"] = "application/json";
+  if (auth) {
+    const token = getAuthToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+  }
+  const response = await fetch(path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : null
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.message || "요청 처리 중 오류가 발생했습니다.");
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+async function adminApiRequest(path, { method = "GET", body = null } = {}) {
+  const headers = {
+    Accept: "application/json",
+    "x-admin-token": getAdminToken()
+  };
+  if (body) headers["Content-Type"] = "application/json";
+  const response = await fetch(path, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : null
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.message || "관리자 요청 처리 중 오류가 발생했습니다.");
+    error.status = response.status;
+    error.payload = payload;
+    throw error;
+  }
+  return payload;
+}
+
+function replaceState(nextState) {
+  const base = defaultState();
+  Object.keys(state).forEach((key) => delete state[key]);
+  Object.assign(state, base, nextState || {});
+}
+
+function upsertUser(user) {
+  if (!user) return;
+  const existing = state.users.find((item) => item.id === user.id);
+  if (existing) {
+    Object.assign(existing, user);
+  } else {
+    state.users.push(user);
+  }
+}
+
+function buildRemoteState(user = currentUser()) {
+  const publicUsers = user
+    ? state.users
+        .filter((item) => item.id === user.id)
+        .map(({ password, ...publicUser }) => publicUser)
+    : [];
+  return {
+    ...state,
+    users: publicUsers,
+    sessionUserId: user?.id || state.sessionUserId
+  };
+}
+
+function scheduleRemoteSave() {
+  if (isApplyingRemoteState || !getAuthToken() || !currentUser()) return;
+  clearTimeout(remoteSaveTimer);
+  remoteSaveTimer = setTimeout(() => {
+    saveRemoteState();
+  }, REMOTE_SAVE_DELAY_MS);
+}
+
+async function saveRemoteState() {
+  const user = currentUser();
+  if (!user || !getAuthToken()) return;
+  try {
+    await apiRequest("/api/state", {
+      method: "PUT",
+      auth: true,
+      body: { state: buildRemoteState(user) }
+    });
+  } catch (error) {
+    if (error.status === 401 || error.status === 403) clearAuthToken();
+  }
+}
+
+async function hydrateRemoteState() {
+  if (!getAuthToken()) return;
+  try {
+    const payload = await apiRequest("/api/state", { auth: true });
+    isApplyingRemoteState = true;
+    replaceState(payload.state || {});
+    upsertUser(payload.user);
+    state.sessionUserId = payload.user?.id || state.sessionUserId;
+    isApplyingRemoteState = false;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    render();
+  } catch (error) {
+    isApplyingRemoteState = false;
+    if (error.status === 401 || error.status === 403) clearAuthToken();
+  }
 }
 
 function render() {
-  const active = tabs.some((tab) => tab.id === state.activeTab)
+  const isAdmin = isAdminPath();
+  let active = tabs.some((tab) => tab.id === state.activeTab)
     ? state.activeTab
     : "dashboard";
+  const user = currentUser();
+  if (!isAdmin && user && getUserCats().length === 0 && active !== "cats" && active !== "support") {
+    active = "cats";
+  }
   state.activeTab = active;
 
   app.innerHTML = `
     <div class="app">
       ${renderHeader()}
-      <main class="main">${renderView(active)}</main>
+      <main class="main">${isAdmin ? renderAdminView() : renderView(active)}</main>
       ${renderFooter()}
       ${toastText ? `<div class="toast" role="status">${escapeHTML(toastText)}</div>` : ""}
     </div>
   `;
+
+  if (isAdmin) queueAdminUsersLoad();
 
   requestAnimationFrame(() => {
     if (active === "weight") drawWeightChart("weight-chart", getActiveCatWeightLogs());
@@ -406,7 +584,7 @@ function renderHeader() {
         <div class="account">
           ${
             user
-              ? `<span class="account-name">${escapeHTML(user.name)}</span><button class="btn secondary small" data-action="logout">로그아웃</button>`
+              ? `${renderHeaderCatSwitcher()}<span class="account-name">${escapeHTML(user.name)}</span><button class="btn secondary small" data-action="logout">로그아웃</button>`
               : `<span>비회원</span><button class="btn primary small" data-action="start-demo">둘러보기</button>`
           }
         </div>
@@ -415,17 +593,36 @@ function renderHeader() {
   `;
 }
 
+function renderHeaderCatSwitcher() {
+  const cats = getUserCats();
+  if (!cats.length) return "";
+  const activeCat = getActiveCat();
+  return `
+    <label class="cat-switcher">
+      <span>현재</span>
+      <select class="select compact" data-cat-switcher aria-label="현재 선택 고양이">
+        ${cats
+          .map((cat) => `<option value="${cat.id}" ${cat.id === activeCat?.id ? "selected" : ""}>${escapeHTML(cat.name)}</option>`)
+          .join("")}
+      </select>
+    </label>
+  `;
+}
+
 function renderFooter() {
   return `
     <footer class="site-footer">
       <p>© 2026 신장질환을 이긴 고양이 케어. All rights reserved.</p>
+      <p>운영자: ${escapeHTML(operatorName)}</p>
       <p>본 서비스는 고양이 환묘 보호자의 기록 관리를 돕기 위한 무료 베타 서비스이며, 수의사의 진료·처방을 대체하지 않습니다.</p>
     </footer>
   `;
 }
 
 function renderView(active) {
+  if (active === "support") return renderSupportView();
   if (!currentUser()) return renderAuthView();
+  if (active === "cats") return renderCatView();
   if (active === "fluid") return renderFluidView();
   if (active === "medication") return renderMedicationView();
   if (active === "symptoms") return renderSymptomsView();
@@ -452,14 +649,14 @@ function renderDashboardView() {
   const user = currentUser();
   const activeCat = getActiveCat();
   const calorie = activeCat ? calorieProfile(activeCat) : null;
-  const upcoming = user ? getUpcomingCareOccurrences({ limit: 5 }) : [];
+  const upcoming = user ? getUpcomingCareOccurrences({ limit: 5, catId: activeCat?.id }) : [];
   const lastWeight = getActiveCatWeightLogs().at(-1);
 
   return `
     <section class="view-title">
       <div>
         <h1>오늘의 케어</h1>
-        <p>수액, 투약·영양제, 식사, 체중 기록을 한 화면에서 확인합니다.</p>
+        <p>수액, 투약·영양제, 식사, 체중 기록을 한 화면에서 확인합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
       <div class="actions">
         <button class="btn secondary" data-action="export-data">내 데이터 내보내기</button>
@@ -504,6 +701,301 @@ function renderDashboardView() {
       </div>
     </div>
   `;
+}
+
+function renderCatView() {
+  const cats = getUserCats();
+  const activeCat = getActiveCat();
+  return `
+    <section class="view-title">
+      <div>
+        <h1>고양이 프로필</h1>
+        <p>${cats.length ? "케어 기록에 사용할 고양이를 선택하고 프로필을 관리합니다." : "첫 고양이 프로필을 등록하면 케어 도구를 사용할 수 있습니다."}</p>
+      </div>
+    </section>
+
+    <div class="grid sidebar">
+      ${renderCatPanel()}
+      <div class="grid">
+        ${renderCaloriePanel(activeCat)}
+        <section class="panel">
+          <div class="panel-inner">
+            <div class="panel-head">
+              <div>
+                <h2>다음 단계</h2>
+                <p>${activeCat ? `${escapeHTML(activeCat.name)} 기준으로 기록을 시작하세요.` : "프로필 등록 후 수액, 투약, 혈검, 체중 메뉴가 연결됩니다."}</p>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="btn secondary" data-tab="fluid" ${activeCat ? "" : "disabled"}>수액</button>
+              <button class="btn secondary" data-tab="medication" ${activeCat ? "" : "disabled"}>투약</button>
+              <button class="btn secondary" data-tab="labs" ${activeCat ? "" : "disabled"}>혈검</button>
+              <button class="btn secondary" data-tab="weight" ${activeCat ? "" : "disabled"}>체중</button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  `;
+}
+
+function renderCurrentCatText(cat) {
+  return cat ? `현재 선택: ${escapeHTML(cat.name)}` : "고양이를 먼저 등록하세요.";
+}
+
+function renderSupportView() {
+  return `
+    <section class="view-title">
+      <div>
+        <h1>운영비 후원</h1>
+        <p>신장질환을 이긴 고양이 케어를 무료로 유지하기 위한 자발적 후원 안내입니다.</p>
+      </div>
+    </section>
+
+    <div class="grid sidebar">
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>후원 안내</h2>
+              <p>운영자 ${escapeHTML(operatorName)} 개인 명의로 운영비와 서버비를 관리합니다.</p>
+            </div>
+          </div>
+          <div class="grid two">
+            <div class="metric good">
+              <div class="metric-label">서비스 이용</div>
+              <div class="metric-value">무료</div>
+              <div class="metric-note">후원 여부와 무관하게 무료로 사용할 수 있습니다.</div>
+            </div>
+            <div class="metric warn">
+              <div class="metric-label">사용 목적</div>
+              <div class="metric-value">운영비</div>
+              <div class="metric-note">서버, DB, 도메인, 보안·유지보수 비용</div>
+            </div>
+          </div>
+          <div class="notice" style="margin-top: 14px">
+            본 후원은 개인 운영 서비스 유지를 위한 자발적 운영비 후원이며, 기부금영수증은 발급되지 않습니다. 후원 여부는 회원 승인, 게시판 활동, 서비스 이용 가능 여부에 영향을 주지 않습니다.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>후원 방법</h2>
+              <p>계좌 또는 송금 링크가 정해지면 이 영역에 표시됩니다.</p>
+            </div>
+          </div>
+          ${
+            supportAccountText || supportLink
+              ? `<div class="list">
+                  ${
+                    supportAccountText
+                      ? `<article class="item">
+                          <div class="item-head">
+                            <div>
+                              <h3>후원 계좌</h3>
+                              <p>${escapeHTML(supportAccountText)}</p>
+                            </div>
+                            <button class="btn small secondary" data-action="copy-support-account">복사</button>
+                          </div>
+                        </article>`
+                      : ""
+                  }
+                  ${
+                    supportLink
+                      ? `<a class="btn primary" href="${escapeAttr(supportLink)}" target="_blank" rel="noreferrer">후원 링크 열기</a>`
+                      : ""
+                  }
+                </div>`
+              : `<div class="empty">후원 계좌 또는 송금 링크 준비 중입니다.</div>`
+          }
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top: 16px">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>운영 원칙</h2>
+            <p>무료 커뮤니티 도구로 유지하기 위한 약속입니다.</p>
+          </div>
+        </div>
+        <div class="grid three">
+          <div class="item">
+            <h3>무료 유지</h3>
+            <p>핵심 케어 기록 기능은 유료화하지 않고 무료로 제공하는 방향을 우선합니다.</p>
+          </div>
+          <div class="item">
+            <h3>투명한 사용</h3>
+            <p>후원금은 서버비, DB 비용, 도메인, 보안과 유지보수 비용에 사용합니다.</p>
+          </div>
+          <div class="item">
+            <h3>진료 대체 금지</h3>
+            <p>앱의 계산과 기록은 보호자 보조용이며 수의사의 진료와 처방을 대체하지 않습니다.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderAdminView() {
+  const hasToken = Boolean(getAdminToken());
+  return `
+    <section class="view-title">
+      <div>
+        <h1>관리자 승인</h1>
+        <p>신이고 회원 확인 후 가입 신청을 승인하거나 보류합니다.</p>
+      </div>
+      <div class="actions">
+        <button class="btn secondary" data-action="admin-refresh" ${hasToken ? "" : "disabled"}>새로고침</button>
+        <button class="btn ghost" data-tab="dashboard">서비스로 돌아가기</button>
+      </div>
+    </section>
+
+    <div class="grid sidebar">
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>관리자 토큰</h2>
+              <p>Render 환경변수 ADMIN_TOKEN 값을 입력합니다.</p>
+            </div>
+          </div>
+          <form class="grid" data-form="admin-token">
+            <div class="form-field">
+              <label for="admin-token">ADMIN_TOKEN</label>
+              <input class="control" id="admin-token" name="adminToken" type="password" placeholder="${hasToken ? "저장된 토큰 사용 중" : "관리자 토큰"}" autocomplete="off" />
+              <p class="field-help">${hasToken ? "이 브라우저에 관리자 토큰이 저장되어 있습니다." : "토큰은 이 브라우저 localStorage에만 저장됩니다."}</p>
+            </div>
+            <div class="actions">
+              <button class="btn primary" type="submit">토큰 저장</button>
+              <button class="btn secondary" type="button" data-action="admin-clear-token" ${hasToken ? "" : "disabled"}>토큰 삭제</button>
+            </div>
+          </form>
+          <div class="notice" style="margin-top: 14px">
+            관리자 화면 주소는 <strong>/admin</strong>입니다. 토큰이 없는 사용자는 가입 신청 정보를 볼 수 없습니다.
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-inner">
+          <div class="panel-head">
+            <div>
+              <h2>가입 신청 상태</h2>
+              <p>${hasToken ? "상태별 신청자를 확인합니다." : "관리자 토큰을 먼저 저장하세요."}</p>
+            </div>
+          </div>
+          <div class="actions">
+            ${renderAdminStatusButton("pending", "승인 대기")}
+            ${renderAdminStatusButton("approved", "승인됨")}
+            ${renderAdminStatusButton("rejected", "보류")}
+          </div>
+          ${adminError ? `<p class="field-help is-error" style="margin-top: 12px">${escapeHTML(adminError)}</p>` : ""}
+          ${adminLoading ? `<div class="empty" style="margin-top: 12px">신청 목록을 불러오는 중입니다.</div>` : ""}
+          ${
+            hasToken && !adminLoading
+              ? `<div class="list" style="margin-top: 12px">
+                  ${adminUsers.length ? adminUsers.map(renderAdminUserItem).join("") : `<div class="empty">해당 상태의 가입 신청이 없습니다.</div>`}
+                </div>`
+              : ""
+          }
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderAdminStatusButton(status, label) {
+  return `
+    <button
+      class="btn small ${adminStatusFilter === status ? "primary" : "secondary"}"
+      data-action="admin-filter"
+      data-status="${status}"
+    >
+      ${label}
+    </button>
+  `;
+}
+
+function renderAdminUserItem(user) {
+  return `
+    <article class="item">
+      <div class="item-head">
+        <div>
+          <h3>${escapeHTML(user.cafeNickname || user.name)}</h3>
+          <p>네이버 ID ${escapeHTML(user.naverId || "-")} · 이메일 ${escapeHTML(user.email || "-")}</p>
+          <div class="chips">
+            <span class="chip ${user.approvalStatus === "approved" ? "blue" : user.approvalStatus === "rejected" ? "coral" : "amber"}">${renderApprovalStatusLabel(user.approvalStatus)}</span>
+            <span class="chip">신청 ${formatDateTime(user.approvalRequestedAt || user.createdAt)}</span>
+            ${user.approvedAt ? `<span class="chip blue">승인 ${formatDateTime(user.approvedAt)}</span>` : ""}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn small primary" data-action="admin-approval" data-id="${escapeAttr(user.id)}" data-status="approved" ${user.approvalStatus === "approved" ? "disabled" : ""}>승인</button>
+          <button class="btn small warn" data-action="admin-approval" data-id="${escapeAttr(user.id)}" data-status="pending" ${user.approvalStatus === "pending" ? "disabled" : ""}>대기</button>
+          <button class="btn small danger" data-action="admin-approval" data-id="${escapeAttr(user.id)}" data-status="rejected" ${user.approvalStatus === "rejected" ? "disabled" : ""}>보류</button>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function renderApprovalStatusLabel(status) {
+  if (status === "approved") return "승인됨";
+  if (status === "rejected") return "보류";
+  return "승인 대기";
+}
+
+function queueAdminUsersLoad() {
+  if (!getAdminToken() || adminLoading || adminLoadedStatus === adminStatusFilter) return;
+  loadAdminUsers();
+}
+
+async function loadAdminUsers() {
+  if (!getAdminToken()) return;
+  adminLoading = true;
+  adminError = "";
+  render();
+  try {
+    const payload = await adminApiRequest(`/api/admin/users?status=${encodeURIComponent(adminStatusFilter)}`);
+    adminUsers = payload.users || [];
+    adminLoadedStatus = adminStatusFilter;
+  } catch (error) {
+    adminUsers = [];
+    adminLoadedStatus = "";
+    adminError = error.message || "가입 신청 목록을 불러오지 못했습니다.";
+  } finally {
+    adminLoading = false;
+    render();
+  }
+}
+
+async function updateAdminApproval(userId, approvalStatus) {
+  if (!getAdminToken()) {
+    showToast("관리자 토큰을 먼저 저장해주세요.");
+    return;
+  }
+  adminLoading = true;
+  adminError = "";
+  render();
+  try {
+    await adminApiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      body: { approvalStatus }
+    });
+    adminLoadedStatus = "";
+    showToast(`${renderApprovalStatusLabel(approvalStatus)} 처리했습니다.`);
+    await loadAdminUsers();
+  } catch (error) {
+    adminError = error.message || "승인 상태를 변경하지 못했습니다.";
+    adminLoading = false;
+    render();
+  }
 }
 
 function renderAuthPanel() {
@@ -580,14 +1072,16 @@ function renderCatPanel() {
   }
 
   const cats = getUserCats();
+  const editingCat = cats.find((cat) => cat.id === state.editingCatId) || null;
   return `
     <section class="panel">
       <div class="panel-inner">
         <div class="panel-head">
           <div>
-            <h2>고양이 프로필</h2>
-            <p>체중, 나이, 건강상태를 케어 계산에 사용합니다.</p>
+            <h2>${editingCat ? "고양이 프로필 수정" : "고양이 프로필"}</h2>
+            <p>${editingCat ? `${escapeHTML(editingCat.name)} 정보를 수정합니다.` : "체중, 나이, 건강상태를 케어 계산에 사용합니다."}</p>
           </div>
+          ${editingCat ? `<button class="btn small secondary" data-action="cancel-cat-edit">새 프로필</button>` : ""}
         </div>
         <div class="list">
           ${
@@ -597,48 +1091,49 @@ function renderCatPanel() {
           }
         </div>
         <form class="grid" data-form="cat" style="margin-top: 14px">
+          <input type="hidden" name="id" value="${escapeAttr(editingCat?.id || "")}" />
           <div class="form-grid">
             <div class="form-field">
               <label for="cat-name">이름</label>
-              <input class="control" id="cat-name" name="name" required />
+              <input class="control" id="cat-name" name="name" value="${escapeAttr(editingCat?.name || "")}" required />
             </div>
             <div class="form-field">
               <label for="cat-age">나이</label>
-              <input class="control" id="cat-age" name="ageYears" type="number" min="0" max="30" step="0.1" required />
+              <input class="control" id="cat-age" name="ageYears" type="number" min="0" max="30" step="0.1" value="${editingCat?.ageYears ?? ""}" required />
             </div>
             <div class="form-field">
               <label for="cat-weight">체중 kg</label>
-              <input class="control" id="cat-weight" name="weightKg" type="number" min="0.2" max="20" step="0.01" required />
+              <input class="control" id="cat-weight" name="weightKg" type="number" min="0.2" max="20" step="0.01" value="${editingCat?.weightKg ?? ""}" required />
             </div>
             <div class="form-field">
               <label for="cat-bcs">BCS 1-9</label>
               <select class="select" id="cat-bcs" name="bcs">
                 ${range(1, 9)
-                  .map((value) => `<option value="${value}" ${value === 5 ? "selected" : ""}>${value}</option>`)
+                  .map((value) => `<option value="${value}" ${value === (editingCat?.bcs || 5) ? "selected" : ""}>${value}</option>`)
                   .join("")}
               </select>
             </div>
             <div class="form-field">
               <label for="cat-neutered">중성화</label>
               <select class="select" id="cat-neutered" name="neutered">
-                <option value="yes">완료</option>
-                <option value="no">미완료</option>
+                <option value="yes" ${editingCat?.neutered !== "no" ? "selected" : ""}>완료</option>
+                <option value="no" ${editingCat?.neutered === "no" ? "selected" : ""}>미완료</option>
               </select>
             </div>
             <div class="form-field">
               <label for="cat-activity">활동량</label>
               <select class="select" id="cat-activity" name="activity">
-                <option value="low">낮음</option>
-                <option value="normal" selected>보통</option>
-                <option value="active">높음</option>
+                <option value="low" ${editingCat?.activity === "low" ? "selected" : ""}>낮음</option>
+                <option value="normal" ${!editingCat || editingCat.activity === "normal" ? "selected" : ""}>보통</option>
+                <option value="active" ${editingCat?.activity === "active" ? "selected" : ""}>높음</option>
               </select>
             </div>
             <div class="form-field full">
               <span class="field-label">건강상태</span>
-              ${renderHealthChoices([])}
+              ${renderHealthChoices(editingCat?.health || [])}
             </div>
           </div>
-          <button class="btn primary" type="submit">프로필 추가</button>
+          <button class="btn primary" type="submit">${editingCat ? "프로필 수정" : "프로필 추가"}</button>
         </form>
       </div>
     </section>
@@ -662,6 +1157,7 @@ function renderCatItem(cat) {
           <button class="btn small ${active ? "secondary" : "primary"}" data-action="select-cat" data-id="${cat.id}">
             ${active ? "선택됨" : "선택"}
           </button>
+          <button class="btn small secondary" data-action="edit-cat" data-id="${cat.id}">수정</button>
           <button class="btn small danger" data-action="delete-cat" data-id="${cat.id}">삭제</button>
         </div>
       </div>
@@ -841,15 +1337,15 @@ function renderFluidView() {
   const user = currentUser();
   const activeCat = getActiveCat();
   const plans = user
-    ? state.fluidPlans.filter((plan) => plan.userId === user.id && plan.active !== false)
+    ? state.fluidPlans.filter((plan) => plan.userId === user.id && plan.active !== false && (!activeCat || plan.catId === activeCat.id))
     : [];
-  const upcoming = user ? getUpcomingOccurrences({ limit: 16 }) : [];
+  const upcoming = user ? getUpcomingOccurrences({ limit: 16, catId: activeCat?.id }) : [];
 
   return `
     <section class="view-title">
       <div>
         <h1>수액 스케줄</h1>
-        <p>처방받은 수액량을 날짜와 시간으로 관리합니다.</p>
+        <p>처방받은 수액량을 날짜와 시간으로 관리합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
     </section>
     ${user ? "" : renderAuthPanel()}
@@ -999,15 +1495,15 @@ function renderMedicationView() {
   const user = currentUser();
   const activeCat = getActiveCat();
   const plans = user
-    ? state.medicationPlans.filter((plan) => plan.userId === user.id && plan.active !== false)
+    ? state.medicationPlans.filter((plan) => plan.userId === user.id && plan.active !== false && (!activeCat || plan.catId === activeCat.id))
     : [];
-  const upcoming = user ? getUpcomingMedicationOccurrences({ limit: 18 }) : [];
+  const upcoming = user ? getUpcomingMedicationOccurrences({ limit: 18, catId: activeCat?.id }) : [];
 
   return `
     <section class="view-title">
       <div>
         <h1>투약·영양제 스케줄</h1>
-        <p>인흡착제, 요독흡착제, 영양제, 병원 처방약 시간을 체크합니다.</p>
+        <p>인흡착제, 요독흡착제, 영양제, 병원 처방약 시간을 체크합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
     </section>
     ${user ? "" : renderAuthPanel()}
@@ -1254,7 +1750,7 @@ function renderSymptomsView() {
     <section class="view-title">
       <div>
         <h1>구토·설사 체크</h1>
-        <p>구토와 설사의 횟수, 색, 상태를 날짜별로 기록합니다.</p>
+        <p>구토와 설사의 횟수, 색, 상태를 날짜별로 기록합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
     </section>
     ${user ? "" : renderAuthPanel()}
@@ -1795,7 +2291,7 @@ function renderLabsView() {
     <section class="view-title">
       <div>
         <h1>혈검·신장수치</h1>
-        <p>BUN, CREA, HCT, 전해질, 요검사 수치를 날짜별로 기록합니다.</p>
+        <p>BUN, CREA, HCT, 전해질, 요검사 수치를 날짜별로 기록합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
     </section>
     ${user ? "" : renderAuthPanel()}
@@ -1970,7 +2466,7 @@ function renderWeightView() {
     <section class="view-title">
       <div>
         <h1>체중 기록</h1>
-        <p>체중 변화와 메모를 함께 남깁니다.</p>
+        <p>체중 변화와 메모를 함께 남깁니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
     </section>
     ${user ? "" : renderAuthPanel()}
@@ -2270,6 +2766,7 @@ function renderPostItem(post) {
 function handleAction(actionName, element) {
   if (actionName === "logout") {
     state.sessionUserId = null;
+    clearAuthToken();
     saveState();
     showToast("로그아웃했습니다.");
     render();
@@ -2281,8 +2778,59 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "copy-support-account") {
+    if (!supportAccountText) return;
+    navigator.clipboard?.writeText(supportAccountText);
+    showToast("후원 계좌를 복사했습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "admin-clear-token") {
+    clearAdminToken();
+    adminUsers = [];
+    adminLoadedStatus = "";
+    adminError = "";
+    showToast("관리자 토큰을 삭제했습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "admin-refresh") {
+    adminLoadedStatus = "";
+    loadAdminUsers();
+    return;
+  }
+
+  if (actionName === "admin-filter") {
+    adminStatusFilter = element.dataset.status || "pending";
+    adminLoadedStatus = "";
+    render();
+    return;
+  }
+
+  if (actionName === "admin-approval") {
+    updateAdminApproval(element.dataset.id, element.dataset.status);
+    return;
+  }
+
   if (actionName === "select-cat") {
     state.activeCatId = element.dataset.id;
+    saveState();
+    render();
+    return;
+  }
+
+  if (actionName === "edit-cat") {
+    state.editingCatId = element.dataset.id;
+    state.activeCatId = element.dataset.id;
+    saveState();
+    render();
+    return;
+  }
+
+  if (actionName === "cancel-cat-edit") {
+    state.editingCatId = null;
     saveState();
     render();
     return;
@@ -2305,6 +2853,7 @@ function handleAction(actionName, element) {
     state.labLogs = state.labLogs.filter((item) => item.catId !== cat.id);
     state.weightLogs = state.weightLogs.filter((item) => item.catId !== cat.id);
     if (state.activeCatId === cat.id) state.activeCatId = getUserCats()[0]?.id || null;
+    if (state.editingCatId === cat.id) state.editingCatId = null;
     saveState();
     showToast("프로필을 삭제했습니다.");
     render();
@@ -2432,11 +2981,50 @@ function handleAction(actionName, element) {
   }
 }
 
-function handleForm(formName, form) {
+async function handleForm(formName, form) {
   const data = new FormData(form);
+
+  if (formName === "admin-token") {
+    const token = String(data.get("adminToken") || "").trim();
+    if (!token) {
+      showToast("관리자 토큰을 입력해주세요.");
+      render();
+      return;
+    }
+    setAdminToken(token);
+    adminStatusFilter = "pending";
+    adminLoadedStatus = "";
+    adminError = "";
+    showToast("관리자 토큰을 저장했습니다.");
+    render();
+    return;
+  }
 
   if (formName === "signup") {
     const email = String(data.get("email")).trim().toLowerCase();
+    const naverId = String(data.get("naverId")).trim();
+    const cafeNickname = String(data.get("cafeNickname")).trim();
+    const password = String(data.get("password"));
+
+    try {
+      await apiRequest("/api/signup", {
+        method: "POST",
+        body: { email, naverId, cafeNickname, password }
+      });
+      clearAuthToken();
+      state.sessionUserId = null;
+      saveState();
+      showToast("가입 신청이 접수되었습니다. 운영자 승인 후 로그인할 수 있습니다.");
+      render();
+      return;
+    } catch (error) {
+      if (!shouldUseLocalFallback(error)) {
+        showToast(error.message || "가입 신청을 처리하지 못했습니다.");
+        render();
+        return;
+      }
+    }
+
     const existingUser = state.users.find((user) => user.email === email);
     if (existingUser) {
       const status = getApprovalStatus(existingUser);
@@ -2444,20 +3032,18 @@ function handleForm(formName, form) {
       render();
       return;
     }
-    const naverId = String(data.get("naverId")).trim();
     if (state.users.some((user) => String(user.naverId || "").toLowerCase() === naverId.toLowerCase())) {
       showToast("이미 가입 신청된 네이버 ID입니다.");
       render();
       return;
     }
-    const cafeNickname = String(data.get("cafeNickname")).trim();
     const user = {
       id: uid("user"),
       name: cafeNickname,
       naverId,
       cafeNickname,
       email,
-      password: String(data.get("password")),
+      password,
       approvalStatus: "pending",
       approvalRequestedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
@@ -2473,6 +3059,33 @@ function handleForm(formName, form) {
   if (formName === "login") {
     const email = String(data.get("email")).trim().toLowerCase();
     const password = String(data.get("password"));
+
+    try {
+      const payload = await apiRequest("/api/login", {
+        method: "POST",
+        body: { email, password }
+      });
+      setAuthToken(payload.token);
+      if (payload.state && Object.keys(payload.state).length) {
+        isApplyingRemoteState = true;
+        replaceState(payload.state);
+        isApplyingRemoteState = false;
+      }
+      upsertUser(payload.user);
+      state.sessionUserId = payload.user.id;
+      saveState();
+      showToast("로그인했습니다.");
+      render();
+      return;
+    } catch (error) {
+      isApplyingRemoteState = false;
+      if (!shouldUseLocalFallback(error)) {
+        showToast(error.message || "로그인 정보를 확인해주세요.");
+        render();
+        return;
+      }
+    }
+
     const user = state.users.find((item) => item.email === email && item.password === password);
     if (!user) {
       showToast("이메일 또는 비밀번호를 확인해주세요.");
@@ -2500,8 +3113,10 @@ function handleForm(formName, form) {
   if (formName === "cat") {
     const user = requireUser();
     if (!user) return;
-    const cat = {
-      id: uid("cat"),
+    const catId = String(data.get("id") || "");
+    const existingCat = state.cats.find((item) => item.id === catId && item.userId === user.id);
+    const catData = {
+      id: existingCat?.id || uid("cat"),
       userId: user.id,
       name: String(data.get("name")).trim(),
       ageYears: toNumber(data.get("ageYears")),
@@ -2512,10 +3127,19 @@ function handleForm(formName, form) {
       health: data.getAll("health").map(String),
       createdAt: new Date().toISOString()
     };
-    state.cats.push(cat);
-    state.activeCatId = cat.id;
+    if (existingCat) {
+      Object.assign(existingCat, {
+        ...catData,
+        createdAt: existingCat.createdAt,
+        updatedAt: new Date().toISOString()
+      });
+    } else {
+      state.cats.push(catData);
+    }
+    state.activeCatId = catData.id;
+    state.editingCatId = null;
     saveState();
-    showToast(`${cat.name} 프로필을 추가했습니다.`);
+    showToast(existingCat ? `${catData.name} 프로필을 수정했습니다.` : `${catData.name} 프로필을 추가했습니다.`);
     render();
     return;
   }
@@ -3230,7 +3854,7 @@ function buildTimes(firstTime, timesPerDay) {
   return range(0, count - 1).map((index) => formatMinutes((start + step * index) % (24 * 60)));
 }
 
-function getUpcomingOccurrences({ limit = 12 } = {}) {
+function getUpcomingOccurrences({ limit = 12, catId = "" } = {}) {
   const user = currentUser();
   if (!user) return [];
   const today = new Date(`${todayISO()}T00:00:00`);
@@ -3239,7 +3863,7 @@ function getUpcomingOccurrences({ limit = 12 } = {}) {
   const items = [];
 
   state.fluidPlans
-    .filter((plan) => plan.userId === user.id && plan.active !== false && catIds.has(plan.catId))
+    .filter((plan) => plan.userId === user.id && plan.active !== false && catIds.has(plan.catId) && (!catId || plan.catId === catId))
     .forEach((plan) => {
       const cat = cats.find((item) => item.id === plan.catId);
       if (!cat) return;
@@ -3258,7 +3882,7 @@ function getUpcomingOccurrences({ limit = 12 } = {}) {
     .slice(0, limit);
 }
 
-function getUpcomingMedicationOccurrences({ limit = 12 } = {}) {
+function getUpcomingMedicationOccurrences({ limit = 12, catId = "" } = {}) {
   const user = currentUser();
   if (!user) return [];
   const today = new Date(`${todayISO()}T00:00:00`);
@@ -3267,7 +3891,7 @@ function getUpcomingMedicationOccurrences({ limit = 12 } = {}) {
   const items = [];
 
   state.medicationPlans
-    .filter((plan) => plan.userId === user.id && plan.active !== false && catIds.has(plan.catId))
+    .filter((plan) => plan.userId === user.id && plan.active !== false && catIds.has(plan.catId) && (!catId || plan.catId === catId))
     .forEach((plan) => {
       const cat = cats.find((item) => item.id === plan.catId);
       if (!cat) return;
@@ -3287,10 +3911,10 @@ function getUpcomingMedicationOccurrences({ limit = 12 } = {}) {
     .slice(0, limit);
 }
 
-function getUpcomingCareOccurrences({ limit = 12 } = {}) {
+function getUpcomingCareOccurrences({ limit = 12, catId = "" } = {}) {
   return [
-    ...getUpcomingOccurrences({ limit: 30 }),
-    ...getUpcomingMedicationOccurrences({ limit: 30 })
+    ...getUpcomingOccurrences({ limit: 30, catId }),
+    ...getUpcomingMedicationOccurrences({ limit: 30, catId })
   ]
     .sort((a, b) => `${a.date}T${a.time}`.localeCompare(`${b.date}T${b.time}`))
     .slice(0, limit);
@@ -3436,6 +4060,7 @@ function createDemoLabLog(user, cat) {
 }
 
 function startDemo() {
+  clearAuthToken();
   let user = state.users.find((item) => item.email === "demo@sinego.local");
   if (!user) {
     user = {

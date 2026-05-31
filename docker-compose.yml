@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sinego-care-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: sinego_care
+      POSTGRES_USER: sinego
+      POSTGRES_PASSWORD: sinego_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - sinego-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sinego -d sinego_care"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sinego-postgres-data:
