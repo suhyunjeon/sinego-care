@@ -1515,7 +1515,7 @@ function renderFluidView() {
               </div>
               <div class="form-field">
                 <label for="fluid-dose">1회 ml</label>
-                <input class="control" id="fluid-dose" name="doseMl" inputmode="numeric" required />
+                <input class="control" id="fluid-dose" name="doseMl" type="number" min="1" step="1" inputmode="numeric" required />
               </div>
               <div class="form-field">
                 <label for="fluid-times">하루 횟수</label>
@@ -1921,7 +1921,7 @@ function renderSymptomsView() {
               <div class="form-grid">
                 <div class="form-field">
                   <label for="vomit-count">구토 횟수</label>
-                  <input class="control" id="vomit-count" name="vomitCount" inputmode="numeric" value="0" />
+                  <input class="control" id="vomit-count" name="vomitCount" type="number" min="0" step="1" inputmode="numeric" value="0" />
                 </div>
                 <div class="form-field">
                   <label for="vomit-color">구토 색</label>
@@ -1939,7 +1939,7 @@ function renderSymptomsView() {
               <div class="form-grid three">
                 <div class="form-field">
                   <label for="diarrhea-count">설사 횟수</label>
-                  <input class="control" id="diarrhea-count" name="diarrheaCount" inputmode="numeric" value="0" />
+                  <input class="control" id="diarrhea-count" name="diarrheaCount" type="number" min="0" step="1" inputmode="numeric" value="0" />
                 </div>
                 <div class="form-field">
                   <label for="stool-color">대변 색</label>
@@ -3322,13 +3322,19 @@ async function handleForm(formName, form) {
     const user = requireUser();
     if (!user) return;
     const times = buildTimes(String(data.get("firstTime")), toNumber(data.get("timesPerDay")));
+    const doseMl = toNumber(data.get("doseMl"));
+    if (doseMl <= 0) {
+      showToast("수액량은 1ml 이상으로 입력해주세요.");
+      render();
+      return;
+    }
     state.fluidPlans.push({
       id: uid("fluid"),
       userId: user.id,
       catId: String(data.get("catId")),
       name: String(data.get("name")).trim(),
       fluidType: String(data.get("fluidType") || "하트만"),
-      doseMl: toNumber(data.get("doseMl")),
+      doseMl,
       timesPerDay: toNumber(data.get("timesPerDay")),
       intervalDays: toNumber(data.get("intervalDays")),
       times,
