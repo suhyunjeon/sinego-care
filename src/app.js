@@ -369,6 +369,7 @@ function render() {
     <div class="app">
       ${renderHeader()}
       <main class="main">${renderView(active)}</main>
+      ${renderFooter()}
       ${toastText ? `<div class="toast" role="status">${escapeHTML(toastText)}</div>` : ""}
     </div>
   `;
@@ -411,6 +412,15 @@ function renderHeader() {
         </div>
       </div>
     </header>
+  `;
+}
+
+function renderFooter() {
+  return `
+    <footer class="site-footer">
+      <p>© 2026 신장질환을 이긴 고양이 케어. All rights reserved.</p>
+      <p>본 서비스는 고양이 환묘 보호자의 기록 관리를 돕기 위한 무료 베타 서비스이며, 수의사의 진료·처방을 대체하지 않습니다.</p>
+    </footer>
   `;
 }
 
@@ -503,15 +513,15 @@ function renderAuthPanel() {
         <div class="panel-head">
           <div>
             <h2>회원 시작</h2>
-            <p>데이터는 현재 기기의 브라우저에만 저장됩니다.</p>
+            <p>가입 신청은 신이고(신장질환을 이긴 고양이) 회원 확인 후 승인됩니다.</p>
           </div>
           <button class="btn primary" data-action="start-demo">데모 둘러보기</button>
         </div>
         <div class="auth-grid">
           <form class="grid" data-form="signup">
             <div class="section-head">
-              <h2>회원가입</h2>
-              <p>네이버 ID와 신이고 닉네임으로 베타 계정을 만듭니다.</p>
+              <h2>회원가입 신청</h2>
+              <p>운영자가 신이고 닉네임과 네이버 ID를 확인한 뒤 승인합니다.</p>
             </div>
             <div class="form-grid">
               <div class="form-field">
@@ -531,12 +541,13 @@ function renderAuthPanel() {
                 <input class="control" id="signup-password" name="password" type="password" minlength="4" required autocomplete="new-password" />
               </div>
             </div>
-            <button class="btn primary" type="submit">가입하고 시작</button>
+            <p class="field-help">승인 전에는 로그인할 수 없으며, 둘러보기로 먼저 기능을 확인할 수 있습니다.</p>
+            <button class="btn primary" type="submit">가입 신청</button>
           </form>
           <form class="grid" data-form="login">
             <div class="section-head">
               <h2>로그인</h2>
-              <p>같은 브라우저에 저장된 계정으로 이어서 사용합니다.</p>
+              <p>관리자 승인 완료 후 사용할 수 있습니다.</p>
             </div>
             <div class="form-grid">
               <div class="form-field">
@@ -2426,8 +2437,16 @@ function handleForm(formName, form) {
 
   if (formName === "signup") {
     const email = String(data.get("email")).trim().toLowerCase();
-    if (state.users.some((user) => user.email === email)) {
-      showToast("이미 가입된 이메일입니다.");
+    const existingUser = state.users.find((user) => user.email === email);
+    if (existingUser) {
+      const status = getApprovalStatus(existingUser);
+      showToast(status === "pending" ? "이미 가입 신청된 이메일입니다. 관리자 승인 후 로그인할 수 있습니다." : "이미 가입된 이메일입니다.");
+      render();
+      return;
+    }
+    const naverId = String(data.get("naverId")).trim();
+    if (state.users.some((user) => String(user.naverId || "").toLowerCase() === naverId.toLowerCase())) {
+      showToast("이미 가입 신청된 네이버 ID입니다.");
       render();
       return;
     }
@@ -2435,16 +2454,18 @@ function handleForm(formName, form) {
     const user = {
       id: uid("user"),
       name: cafeNickname,
-      naverId: String(data.get("naverId")).trim(),
+      naverId,
       cafeNickname,
       email,
       password: String(data.get("password")),
+      approvalStatus: "pending",
+      approvalRequestedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
     state.users.push(user);
-    state.sessionUserId = user.id;
+    state.sessionUserId = null;
     saveState();
-    showToast("회원가입이 완료되었습니다.");
+    showToast("가입 신청이 접수되었습니다. 운영자 승인 후 로그인할 수 있습니다.");
     render();
     return;
   }
@@ -2455,6 +2476,17 @@ function handleForm(formName, form) {
     const user = state.users.find((item) => item.email === email && item.password === password);
     if (!user) {
       showToast("이메일 또는 비밀번호를 확인해주세요.");
+      render();
+      return;
+    }
+    const status = getApprovalStatus(user);
+    if (status === "pending") {
+      showToast("관리자 승인 대기 중입니다. 신이고 회원 확인 후 이용할 수 있습니다.");
+      render();
+      return;
+    }
+    if (status === "rejected") {
+      showToast("가입 승인이 보류된 계정입니다. 운영자에게 문의해주세요.");
       render();
       return;
     }
@@ -2809,7 +2841,13 @@ function handleForm(formName, form) {
 }
 
 function currentUser() {
-  return state.users.find((user) => user.id === state.sessionUserId) || null;
+  const user = state.users.find((item) => item.id === state.sessionUserId) || null;
+  if (!user || getApprovalStatus(user) !== "approved") return null;
+  return user;
+}
+
+function getApprovalStatus(user) {
+  return user?.approvalStatus || "approved";
 }
 
 function requireUser() {
@@ -3407,6 +3445,8 @@ function startDemo() {
       cafeNickname: "둘러보기 집사",
       email: "demo@sinego.local",
       password: "demo",
+      approvalStatus: "approved",
+      approvedAt: new Date().toISOString(),
       createdAt: new Date().toISOString()
     };
     state.users.push(user);

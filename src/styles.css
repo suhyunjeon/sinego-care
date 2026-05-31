@@ -163,6 +163,19 @@ a {
   padding: 22px;
 }
 
+.site-footer {
+  margin: 0 auto;
+  max-width: 1280px;
+  padding: 0 22px 34px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.site-footer p {
+  margin: 4px 0 0;
+}
+
 .view-title {
   display: flex;
   align-items: flex-end;
@@ -722,6 +735,10 @@ canvas {
 
   .main {
     padding: 16px 16px calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .site-footer {
+    padding: 0 16px calc(96px + env(safe-area-inset-bottom));
   }
 
   .view-title {
