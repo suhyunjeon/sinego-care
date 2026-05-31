@@ -21,12 +21,70 @@ const supportAccountText = "";
 const supportLink = "";
 
 const healthOptions = {
-  kidney: "신장질환",
-  diabetes: "당뇨",
-  obesity: "비만",
-  pancreatitis: "췌장염",
-  dental: "구내염/치아",
-  heart: "심장질환"
+  kidney: {
+    label: "신장질환(CKD/신부전)",
+    detail: "BUN/CREA/SDMA, 인·수분 관리"
+  },
+  aki: {
+    label: "급성 신손상(AKI)",
+    detail: "최근 급격한 신장수치 변화"
+  },
+  proteinuria: {
+    label: "단백뇨/UPC 관리",
+    detail: "UPC, 혈압, 신장 처방약 확인"
+  },
+  hypertension: {
+    label: "고혈압",
+    detail: "혈압 측정과 안저·신장 상태 관찰"
+  },
+  diabetes: {
+    label: "당뇨/혈당 관리",
+    detail: "식사 시간, 혈당, 인슐린 기록"
+  },
+  obesity: {
+    label: "비만/체중감량",
+    detail: "BCS와 목표 체중 관리"
+  },
+  underweight: {
+    label: "저체중/체중감소",
+    detail: "섭취량, 근육량, 식욕 변화 관찰"
+  },
+  pancreatitis: {
+    label: "췌장염/fPL 관리",
+    detail: "fPL, 구토, 식욕부진 기록"
+  },
+  gi: {
+    label: "구토·설사/소화기",
+    detail: "횟수, 색, 변 상태 기록"
+  },
+  dental: {
+    label: "구내염/치아 통증",
+    detail: "통증, 침흘림, 식사 거부 관찰"
+  },
+  heart: {
+    label: "심장질환/수액 주의",
+    detail: "수액량 조절은 병원 지시 우선"
+  },
+  liver: {
+    label: "간담도 질환",
+    detail: "ALT/AST/ALP, 황달 여부 확인"
+  },
+  urinary: {
+    label: "방광염/요로결석",
+    detail: "배뇨 횟수, 혈뇨, 통증 관찰"
+  },
+  anemia: {
+    label: "빈혈/HCT 관리",
+    detail: "HCT/HGB, 잇몸색, 활력 기록"
+  },
+  thyroid: {
+    label: "갑상샘기능항진증",
+    detail: "체중감소, 식욕, T4 수치 관리"
+  },
+  other: {
+    label: "기타/병원 상담 중",
+    detail: "진단명 확정 전 임시 표시"
+  }
 };
 
 const medicationPresets = [
@@ -1229,7 +1287,7 @@ function renderCatItem(cat) {
           <h3>${escapeHTML(cat.name)}</h3>
           <p>${renderCatShortMeta(cat)}</p>
           <div class="chips">
-            ${cat.health.length ? cat.health.map((key) => `<span class="chip">${healthOptions[key]}</span>`).join("") : `<span class="chip">일반관리</span>`}
+            ${cat.health.length ? cat.health.map((key) => `<span class="chip">${escapeHTML(getHealthLabel(key))}</span>`).join("") : `<span class="chip">일반관리</span>`}
             <span class="chip amber">BCS ${cat.bcs}/9</span>
           </div>
         </div>
@@ -1247,13 +1305,16 @@ function renderCatItem(cat) {
 
 function renderHealthChoices(selected) {
   return `
-    <div class="choice-row">
+    <div class="health-choice-grid">
       ${Object.entries(healthOptions)
         .map(
-          ([key, label]) => `
-            <label class="check-pill">
+          ([key, option]) => `
+            <label class="check-pill health-choice">
               <input type="checkbox" name="health" value="${key}" ${selected.includes(key) ? "checked" : ""} />
-              ${label}
+              <span class="health-choice-text">
+                <span class="health-choice-title">${escapeHTML(option.label)}</span>
+                <span class="health-choice-detail">${escapeHTML(option.detail)}</span>
+              </span>
             </label>
           `
         )
@@ -4407,6 +4468,10 @@ function getCatBirthYearValue(cat) {
   if (birthYear) return birthYear;
   if (!Number.isFinite(Number(cat.ageYears))) return "";
   return getCurrentYear() - Math.round(Number(cat.ageYears));
+}
+
+function getHealthLabel(key) {
+  return healthOptions[key]?.label || key;
 }
 
 function normalizeBirthYear(value) {
