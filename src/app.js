@@ -12,7 +12,7 @@ const tabs = [
   { id: "nutrition", label: "영양" },
   { id: "labs", label: "혈검" },
   { id: "weight", label: "체중" },
-  { id: "board", label: "게시판" },
+  { id: "board", label: "자료실" },
   { id: "support", label: "후원" },
   { id: "privacy", label: "개인정보" }
 ];
@@ -356,6 +356,17 @@ let adminCounts = { pending: 0, approved: 0, rejected: 0 };
 let adminLoadedStatus = "";
 let adminLoading = false;
 let adminError = "";
+let boardPosts = [];
+let boardLoaded = false;
+let boardLoading = false;
+let boardError = "";
+let adminBoardPosts = [];
+let adminBoardStatusFilter = "pending";
+let adminBoardSearchQuery = "";
+let adminBoardCounts = { pending: 0, approved: 0, rejected: 0 };
+let adminBoardLoadedStatus = "";
+let adminBoardLoading = false;
+let adminBoardError = "";
 
 render();
 hydrateRemoteState();
@@ -592,9 +603,17 @@ function buildRemoteState(user = currentUser()) {
     : [];
   return {
     ...state,
+    posts: [],
     users: publicUsers,
     sessionUserId: user?.id || state.sessionUserId
   };
+}
+
+function resetBoardCache() {
+  boardPosts = [];
+  boardLoaded = false;
+  boardLoading = false;
+  boardError = "";
 }
 
 function scheduleRemoteSave() {
@@ -642,7 +661,7 @@ function render() {
     ? state.activeTab
     : "dashboard";
   const user = currentUser();
-  if (!isAdmin && user && getUserCats().length === 0 && !["cats", "support", "privacy"].includes(active)) {
+  if (!isAdmin && user && getUserCats().length === 0 && !["cats", "support", "privacy", "board"].includes(active)) {
     active = "cats";
   }
   state.activeTab = active;
@@ -656,7 +675,11 @@ function render() {
     </div>
   `;
 
-  if (isAdmin) queueAdminUsersLoad();
+  if (isAdmin) {
+    queueAdminUsersLoad();
+    queueAdminBoardPostsLoad();
+  }
+  if (!isAdmin && active === "board") queueBoardPostsLoad();
 
   requestAnimationFrame(() => {
     syncActiveTabPosition();
@@ -900,7 +923,7 @@ function renderSupportView() {
             </div>
           </div>
           <div class="notice" style="margin-top: 14px">
-            본 후원은 개인 운영 서비스 유지를 위한 자발적 운영비 후원이며, 기부금영수증은 발급되지 않습니다. 후원 여부는 회원 승인, 게시판 활동, 서비스 이용 가능 여부에 영향을 주지 않습니다.
+            본 후원은 개인 운영 서비스 유지를 위한 자발적 운영비 후원이며, 기부금영수증은 발급되지 않습니다. 후원 여부는 회원 승인, 자료실 활동, 서비스 이용 가능 여부에 영향을 주지 않습니다.
           </div>
         </div>
       </section>
@@ -1044,7 +1067,7 @@ function renderAdminView() {
     <section class="view-title">
       <div>
         <h1>관리자 승인</h1>
-        <p>신이고 회원 확인 후 가입 신청을 승인하거나 보류합니다.</p>
+        <p>가입 신청과 자료실 등록 신청을 승인하거나 보류합니다.</p>
       </div>
       <div class="actions">
         <button class="btn secondary" data-action="admin-refresh" ${hasToken ? "" : "disabled"}>새로고침</button>
@@ -1116,6 +1139,44 @@ function renderAdminView() {
         </div>
       </section>
     </div>
+
+    <section class="panel" style="margin-top: 16px">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>자료실 등록 승인</h2>
+            <p>${hasToken ? "회원이 신청한 자료를 확인한 뒤 공개하거나 보류합니다." : "관리자 토큰을 먼저 저장하세요."}</p>
+          </div>
+        </div>
+        <form class="admin-search" data-form="admin-board-search">
+          <label class="sr-only" for="admin-board-search-query">자료 신청 검색</label>
+          <input
+            class="control"
+            id="admin-board-search-query"
+            name="query"
+            value="${escapeAttr(adminBoardSearchQuery)}"
+            placeholder="제목, 내용, 작성자, 분류, 운영 메모 검색"
+            ${hasToken ? "" : "disabled"}
+          />
+          <button class="btn secondary" type="submit" ${hasToken ? "" : "disabled"}>검색</button>
+          <button class="btn ghost" type="button" data-action="admin-board-search-clear" ${hasToken && adminBoardSearchQuery ? "" : "disabled"}>초기화</button>
+        </form>
+        <div class="actions">
+          ${renderAdminBoardStatusButton("pending", "승인 대기")}
+          ${renderAdminBoardStatusButton("approved", "공개됨")}
+          ${renderAdminBoardStatusButton("rejected", "보류")}
+        </div>
+        ${adminBoardError ? `<p class="field-help is-error" style="margin-top: 12px">${escapeHTML(adminBoardError)}</p>` : ""}
+        ${adminBoardLoading ? `<div class="empty" style="margin-top: 12px">자료 신청 목록을 불러오는 중입니다.</div>` : ""}
+        ${
+          hasToken && !adminBoardLoading && !adminBoardError
+            ? `<div class="list" style="margin-top: 12px">
+                ${adminBoardPosts.length ? adminBoardPosts.map(renderAdminBoardItem).join("") : `<div class="empty">${adminBoardSearchQuery ? "검색 결과가 없습니다." : "해당 상태의 자료 신청이 없습니다."}</div>`}
+              </div>`
+            : ""
+        }
+      </div>
+    </section>
   `;
 }
 
@@ -1125,6 +1186,19 @@ function renderAdminStatusButton(status, label) {
     <button
       class="btn small ${adminStatusFilter === status ? "primary" : "secondary"}"
       data-action="admin-filter"
+      data-status="${status}"
+    >
+      ${label} <span class="btn-count">${count}</span>
+    </button>
+  `;
+}
+
+function renderAdminBoardStatusButton(status, label) {
+  const count = Number(adminBoardCounts?.[status] || 0);
+  return `
+    <button
+      class="btn small ${adminBoardStatusFilter === status ? "primary" : "secondary"}"
+      data-action="admin-board-filter"
       data-status="${status}"
     >
       ${label} <span class="btn-count">${count}</span>
@@ -1165,8 +1239,47 @@ function renderAdminUserItem(user) {
   `;
 }
 
+function renderAdminBoardItem(post) {
+  return `
+    <article class="item admin-board-card">
+      <div class="item-head">
+        <div>
+          <h3>${escapeHTML(post.title)}</h3>
+          <p>${escapeHTML(post.author || "-")} · ${escapeHTML(post.category || "자료")} · ${formatDateTime(post.createdAt)}${post.catName ? ` · ${escapeHTML(post.catName)}` : ""}</p>
+          <div class="chips">
+            <span class="chip ${post.approvalStatus === "approved" ? "blue" : post.approvalStatus === "rejected" ? "coral" : "amber"}">${renderBoardStatusLabel(post.approvalStatus)}</span>
+            ${post.approvedAt ? `<span class="chip blue">공개 ${formatDateTime(post.approvedAt)}</span>` : ""}
+            ${post.rejectedAt ? `<span class="chip coral">보류 ${formatDateTime(post.rejectedAt)}</span>` : ""}
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn small primary" data-action="admin-board-approval" data-id="${escapeAttr(post.id)}" data-status="approved" ${post.approvalStatus === "approved" ? "disabled" : ""}>공개</button>
+          <button class="btn small warn" data-action="admin-board-approval" data-id="${escapeAttr(post.id)}" data-status="pending" ${post.approvalStatus === "pending" ? "disabled" : ""}>대기</button>
+          <button class="btn small danger" data-action="admin-board-approval" data-id="${escapeAttr(post.id)}" data-status="rejected" ${post.approvalStatus === "rejected" ? "disabled" : ""}>보류</button>
+        </div>
+      </div>
+      <p class="post-body">${escapeHTML(post.body)}</p>
+      <form class="admin-note-form" data-form="admin-board-note">
+        <input type="hidden" name="postId" value="${escapeAttr(post.id)}" />
+        <input type="hidden" name="approvalStatus" value="${escapeAttr(post.approvalStatus || "pending")}" />
+        <label for="admin-board-note-${escapeAttr(post.id)}">운영 메모</label>
+        <textarea class="textarea" id="admin-board-note-${escapeAttr(post.id)}" name="adminNote" maxlength="1000" placeholder="승인 메모, 보류 사유, 확인 필요 사항">${escapeHTML(post.adminNote || "")}</textarea>
+        <div class="actions">
+          <button class="btn small secondary" type="submit">메모 저장</button>
+        </div>
+      </form>
+    </article>
+  `;
+}
+
 function renderApprovalStatusLabel(status) {
   if (status === "approved") return "승인됨";
+  if (status === "rejected") return "보류";
+  return "승인 대기";
+}
+
+function renderBoardStatusLabel(status) {
+  if (status === "approved") return "공개됨";
   if (status === "rejected") return "보류";
   return "승인 대기";
 }
@@ -1174,6 +1287,11 @@ function renderApprovalStatusLabel(status) {
 function queueAdminUsersLoad() {
   if (!getAdminToken() || adminLoading || adminLoadedStatus === getAdminLoadedKey()) return;
   loadAdminUsers();
+}
+
+function queueAdminBoardPostsLoad() {
+  if (!getAdminToken() || adminBoardLoading || adminBoardLoadedStatus === getAdminBoardLoadedKey()) return;
+  loadAdminBoardPosts();
 }
 
 async function loadAdminUsers() {
@@ -1198,8 +1316,34 @@ async function loadAdminUsers() {
   }
 }
 
+async function loadAdminBoardPosts() {
+  if (!getAdminToken()) return;
+  adminBoardLoading = true;
+  adminBoardError = "";
+  render();
+  try {
+    const params = new URLSearchParams({ status: adminBoardStatusFilter });
+    if (adminBoardSearchQuery) params.set("q", adminBoardSearchQuery);
+    const payload = await adminApiRequest(`/api/admin/board-posts?${params.toString()}`);
+    adminBoardPosts = payload.posts || [];
+    adminBoardCounts = payload.counts || { pending: 0, approved: 0, rejected: 0 };
+    adminBoardLoadedStatus = getAdminBoardLoadedKey();
+  } catch (error) {
+    adminBoardPosts = [];
+    adminBoardLoadedStatus = getAdminBoardLoadedKey();
+    adminBoardError = formatAdminError(error);
+  } finally {
+    adminBoardLoading = false;
+    render();
+  }
+}
+
 function getAdminLoadedKey() {
   return `${adminStatusFilter}:${adminSearchQuery}`;
+}
+
+function getAdminBoardLoadedKey() {
+  return `${adminBoardStatusFilter}:${adminBoardSearchQuery}`;
 }
 
 function formatAdminError(error) {
@@ -1235,6 +1379,30 @@ async function updateAdminApproval(userId, approvalStatus, adminNote = "", optio
   } catch (error) {
     adminError = error.message || "승인 상태를 변경하지 못했습니다.";
     adminLoading = false;
+    render();
+  }
+}
+
+async function updateAdminBoardApproval(postId, approvalStatus, adminNote = "", options = {}) {
+  if (!getAdminToken()) {
+    showToast("관리자 토큰을 먼저 저장해주세요.");
+    return;
+  }
+  adminBoardLoading = true;
+  adminBoardError = "";
+  render();
+  try {
+    await adminApiRequest(`/api/admin/board-posts/${encodeURIComponent(postId)}`, {
+      method: "PATCH",
+      body: { approvalStatus, adminNote }
+    });
+    adminBoardLoadedStatus = "";
+    boardLoaded = false;
+    showToast(options.noteOnly ? "자료 운영 메모를 저장했습니다." : `자료를 ${renderBoardStatusLabel(approvalStatus)} 처리했습니다.`);
+    await loadAdminBoardPosts();
+  } catch (error) {
+    adminBoardError = error.message || "자료 승인 상태를 변경하지 못했습니다.";
+    adminBoardLoading = false;
     render();
   }
 }
@@ -3139,22 +3307,23 @@ function renderResourceItem(resource) {
 
 function renderBoardView() {
   const user = currentUser();
-  const posts = state.posts.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  if (!canAccessBoard(user)) return renderBoardLockedView(user);
+
+  const posts = boardPosts.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   return `
     <section class="view-title">
       <div>
-        <h1>게시판</h1>
-        <p>식단, 수액, 검사, 투병 기록을 함께 나눕니다.</p>
+        <h1>자료실</h1>
+        <p>운영자 승인 후 공개되는 회원 자료를 모읍니다.</p>
       </div>
     </section>
-    ${user ? "" : renderAuthPanel()}
     <div class="grid sidebar">
       <section class="panel">
         <div class="panel-inner">
           <div class="panel-head">
             <div>
-              <h2>글쓰기</h2>
-              <p>${user ? `${escapeHTML(user.name)}님으로 작성` : "로그인이 필요합니다"}</p>
+              <h2>자료 등록 신청</h2>
+              <p>${escapeHTML(user.name)}님으로 신청 · 관리자 승인 후 공개</p>
             </div>
           </div>
           <form class="grid" data-form="post-add">
@@ -3162,11 +3331,13 @@ function renderBoardView() {
               <div class="form-field">
                 <label for="post-category">분류</label>
                 <select class="select" id="post-category" name="category">
-                  <option>질문</option>
-                  <option>식단</option>
+                  <option>신장질환</option>
+                  <option>식단/영양</option>
                   <option>수액</option>
+                  <option>투약</option>
                   <option>검사</option>
-                  <option>후기</option>
+                  <option>케어팁</option>
+                  <option>후기/경험</option>
                 </select>
               </div>
               <div class="form-field">
@@ -3177,28 +3348,39 @@ function renderBoardView() {
                 </select>
               </div>
               <div class="form-field full">
-                <label for="post-title">제목</label>
-                <input class="control" id="post-title" name="title" required />
+                <label for="post-title">자료 제목</label>
+                <input class="control" id="post-title" name="title" placeholder="예: 피하수액 준비물 체크리스트" required />
               </div>
               <div class="form-field full">
-                <label for="post-body">내용</label>
-                <textarea class="textarea" id="post-body" name="body" required></textarea>
+                <label for="post-body">자료 내용 또는 링크</label>
+                <textarea class="textarea" id="post-body" name="body" placeholder="본문, 참고 링크, 출처, 주의사항을 함께 적어주세요." required></textarea>
               </div>
             </div>
-            <button class="btn primary" type="submit" ${user ? "" : "disabled"}>게시</button>
+            <button class="btn primary" type="submit" ${user ? "" : "disabled"}>등록 신청</button>
           </form>
+          <div class="notice" style="margin-top: 14px">
+            신청한 자료는 운영자 승인 전까지 본인에게만 보입니다. 승인된 자료만 회원 자료실에 공개됩니다.
+          </div>
         </div>
       </section>
       <section class="panel">
         <div class="panel-inner">
           <div class="panel-head">
             <div>
-              <h2>최근 글</h2>
-              <p>${posts.length}개 글</p>
+              <h2>자료 목록</h2>
+              <p>${boardLoading ? "불러오는 중" : `공개 자료와 내 신청 ${posts.length}개`}</p>
             </div>
           </div>
+          ${boardError ? `<p class="field-help is-error">${escapeHTML(boardError)}</p>` : ""}
+          ${boardLoading || !boardLoaded ? `<div class="empty">자료를 불러오는 중입니다.</div>` : ""}
           <div class="list">
-            ${posts.length ? posts.map(renderPostItem).join("") : `<div class="empty">첫 게시글을 작성해보세요.</div>`}
+            ${
+              boardLoaded && !boardLoading
+                ? posts.length
+                  ? posts.map(renderPostItem).join("")
+                  : `<div class="empty">아직 공개된 자료가 없습니다.</div>`
+                : ""
+            }
           </div>
         </div>
       </section>
@@ -3206,9 +3388,40 @@ function renderBoardView() {
   `;
 }
 
+function renderBoardLockedView(user) {
+  const isDemo = isDemoUser(user);
+  return `
+    <section class="view-title">
+      <div>
+        <h1>자료실</h1>
+        <p>자료실은 관리자 승인 완료 회원에게만 공개됩니다.</p>
+      </div>
+    </section>
+    ${user ? "" : renderAuthPanel()}
+    <section class="panel">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>회원 전용 자료실</h2>
+            <p>${isDemo ? "둘러보기에서는 자료실 내용을 볼 수 없습니다." : "로그인과 관리자 승인이 필요합니다."}</p>
+          </div>
+          ${isDemo ? `<button class="btn secondary" data-action="logout">둘러보기 종료</button>` : ""}
+        </div>
+        <div class="notice">
+          자료실 내용은 신이고 회원 확인 후 승인된 계정에게만 공개됩니다. 둘러보기 데이터와 비회원 상태에서는 자료 목록과 내용을 표시하지 않습니다.
+        </div>
+      </div>
+    </section>
+  `;
+}
+
 function renderPostItem(post) {
   const user = currentUser();
   const canDelete = user && post.userId === user.id;
+  const comments = Array.isArray(post.comments) ? post.comments : [];
+  const status = post.approvalStatus || "approved";
+  const isApproved = status === "approved";
+  const showStatus = canDelete || !isApproved;
   return `
     <article class="item">
       <div class="item-head">
@@ -3216,38 +3429,172 @@ function renderPostItem(post) {
           <h3>${escapeHTML(post.title)}</h3>
           <p>${escapeHTML(post.author)} · ${escapeHTML(post.category)} · ${formatDateTime(post.createdAt)}${post.catName ? ` · ${escapeHTML(post.catName)}` : ""}</p>
         </div>
-        ${canDelete ? `<button class="btn small danger" data-action="delete-post" data-id="${post.id}">삭제</button>` : ""}
+        ${canDelete ? `<button class="btn small danger" data-action="delete-post" data-id="${escapeAttr(post.id)}">삭제</button>` : ""}
       </div>
       <p class="post-body">${escapeHTML(post.body)}</p>
       <div class="chips">
+        ${showStatus ? `<span class="chip ${isApproved ? "blue" : status === "rejected" ? "coral" : "amber"}">${renderBoardStatusLabel(status)}</span>` : ""}
         <span class="chip">${escapeHTML(post.category)}</span>
-        <span class="chip blue">댓글 ${post.comments.length}</span>
+        ${isApproved ? `<span class="chip blue">의견 ${comments.length}</span>` : ""}
       </div>
-      ${post.comments
-        .map(
-          (comment) => `
-            <div class="comment">
-              <strong>${escapeHTML(comment.author)}</strong>
-              <span> · ${formatDateTime(comment.createdAt)}</span>
-              <div>${escapeHTML(comment.body)}</div>
-            </div>
-          `
-        )
-        .join("")}
-      <form class="actions" data-form="comment-add" style="margin-top: 10px">
-        <input type="hidden" name="postId" value="${post.id}" />
-        <label class="sr-only" for="comment-${post.id}">댓글</label>
-        <input class="control" id="comment-${post.id}" name="body" placeholder="댓글" required ${user ? "" : "disabled"} />
-        <button class="btn secondary" type="submit" ${user ? "" : "disabled"}>등록</button>
-      </form>
+      ${
+        isApproved
+          ? `${comments
+              .map(
+                (comment) => `
+                  <div class="comment">
+                    <strong>${escapeHTML(comment.author)}</strong>
+                    <span> · ${formatDateTime(comment.createdAt)}</span>
+                    <div>${escapeHTML(comment.body)}</div>
+                  </div>
+                `
+              )
+              .join("")}
+            <form class="actions" data-form="comment-add" style="margin-top: 10px">
+              <input type="hidden" name="postId" value="${escapeAttr(post.id)}" />
+              <label class="sr-only" for="comment-${escapeAttr(post.id)}">의견</label>
+              <input class="control" id="comment-${escapeAttr(post.id)}" name="body" placeholder="의견" required ${user ? "" : "disabled"} />
+              <button class="btn secondary" type="submit" ${user ? "" : "disabled"}>등록</button>
+            </form>`
+          : `<div class="notice" style="margin-top: 10px">${status === "rejected" ? "보류된 자료입니다. 운영자 메모가 있으면 확인 후 다시 정리해주세요." : "관리자 승인 후 다른 회원에게 공개됩니다."}</div>`
+      }
     </article>
   `;
+}
+
+function isDemoUser(user = currentUser()) {
+  return Boolean(user && (user.email === "demo@sinego.local" || user.naverId === "demo_naver"));
+}
+
+function canAccessBoard(user = currentUser()) {
+  return Boolean(user && !isDemoUser(user) && getAuthToken());
+}
+
+function requireBoardUser() {
+  const user = currentUser();
+  if (!user) {
+    showToast("자료실은 승인 회원 로그인 후 이용할 수 있습니다.");
+    render();
+    return null;
+  }
+  if (isDemoUser(user)) {
+    showToast("둘러보기에서는 자료실을 볼 수 없습니다.");
+    render();
+    return null;
+  }
+  if (!getAuthToken()) {
+    showToast("자료실은 서버 DB에 로그인한 승인 회원만 이용할 수 있습니다.");
+    render();
+    return null;
+  }
+  return user;
+}
+
+function queueBoardPostsLoad() {
+  if (!canAccessBoard() || boardLoading || boardLoaded) return;
+  loadBoardPosts();
+}
+
+async function loadBoardPosts() {
+  if (!canAccessBoard()) return;
+  boardLoading = true;
+  boardError = "";
+  render();
+  try {
+    const payload = await apiRequest("/api/board/posts", { auth: true });
+    boardPosts = Array.isArray(payload.posts) ? payload.posts : [];
+    boardLoaded = true;
+  } catch (error) {
+    boardPosts = [];
+    boardLoaded = true;
+    boardError = formatBoardError(error);
+    if (error.status === 401 || error.status === 403) clearAuthToken();
+  } finally {
+    boardLoading = false;
+    render();
+  }
+}
+
+function formatBoardError(error) {
+  const code = error?.payload?.code;
+  if (code === "database_not_configured") return "자료실은 서버 DB 연결 후 이용할 수 있습니다.";
+  if (code === "auth_required" || code === "session_expired") return "다시 로그인한 뒤 자료실을 이용해주세요.";
+  if (code === "approval_required") return "관리자 승인 완료 후 자료실을 이용할 수 있습니다.";
+  return error?.message || "자료를 불러오지 못했습니다.";
+}
+
+async function createBoardPost(formData) {
+  const user = requireBoardUser();
+  if (!user) return;
+  const cat = state.cats.find((item) => item.id === String(formData.get("catId")));
+  try {
+    const payload = await apiRequest("/api/board/posts", {
+      method: "POST",
+      auth: true,
+      body: {
+        category: String(formData.get("category")),
+        catName: cat?.name || "",
+        title: String(formData.get("title")).trim(),
+        body: String(formData.get("body")).trim()
+      }
+    });
+    boardPosts = [payload.post, ...boardPosts.filter((post) => post.id !== payload.post.id)];
+    boardLoaded = true;
+    boardError = "";
+    showToast("자료 등록 신청이 접수되었습니다. 운영자 승인 후 공개됩니다.");
+    render();
+  } catch (error) {
+    boardError = formatBoardError(error);
+    showToast(error.message || "자료 등록 신청을 처리하지 못했습니다.");
+    render();
+  }
+}
+
+async function deleteBoardPost(postId) {
+  const user = requireBoardUser();
+  if (!user) return;
+  try {
+    await apiRequest(`/api/board/posts/${encodeURIComponent(postId)}`, {
+      method: "DELETE",
+      auth: true
+    });
+    boardPosts = boardPosts.filter((post) => post.id !== postId);
+    showToast("자료를 삭제했습니다.");
+    render();
+  } catch (error) {
+    boardError = formatBoardError(error);
+    showToast(error.message || "자료를 삭제하지 못했습니다.");
+    render();
+  }
+}
+
+async function createBoardComment(formData) {
+  const user = requireBoardUser();
+  if (!user) return;
+  const postId = String(formData.get("postId"));
+  try {
+    const payload = await apiRequest(`/api/board/posts/${encodeURIComponent(postId)}/comments`, {
+      method: "POST",
+      auth: true,
+      body: { body: String(formData.get("body")).trim() }
+    });
+    const post = boardPosts.find((item) => item.id === postId);
+    if (post) {
+      post.comments = [...(Array.isArray(post.comments) ? post.comments : []), payload.comment];
+    }
+    render();
+  } catch (error) {
+    boardError = formatBoardError(error);
+    showToast(error.message || "의견을 등록하지 못했습니다.");
+    render();
+  }
 }
 
 function handleAction(actionName, element) {
   if (actionName === "logout") {
     state.sessionUserId = null;
     clearAuthToken();
+    resetBoardCache();
     saveState();
     showToast("로그아웃했습니다.");
     render();
@@ -3255,6 +3602,7 @@ function handleAction(actionName, element) {
   }
 
   if (actionName === "start-demo") {
+    resetBoardCache();
     startDemo();
     return;
   }
@@ -3282,6 +3630,11 @@ function handleAction(actionName, element) {
     adminLoadedStatus = "";
     adminError = "";
     adminCounts = { pending: 0, approved: 0, rejected: 0 };
+    adminBoardPosts = [];
+    adminBoardSearchQuery = "";
+    adminBoardLoadedStatus = "";
+    adminBoardError = "";
+    adminBoardCounts = { pending: 0, approved: 0, rejected: 0 };
     showToast("관리자 토큰을 삭제했습니다.");
     render();
     return;
@@ -3289,7 +3642,9 @@ function handleAction(actionName, element) {
 
   if (actionName === "admin-refresh") {
     adminLoadedStatus = "";
+    adminBoardLoadedStatus = "";
     loadAdminUsers();
+    loadAdminBoardPosts();
     return;
   }
 
@@ -3311,6 +3666,27 @@ function handleAction(actionName, element) {
     const card = element.closest(".admin-user-card");
     const adminNote = card?.querySelector("[name='adminNote']")?.value || "";
     updateAdminApproval(element.dataset.id, element.dataset.status, adminNote);
+    return;
+  }
+
+  if (actionName === "admin-board-filter") {
+    adminBoardStatusFilter = element.dataset.status || "pending";
+    adminBoardLoadedStatus = "";
+    render();
+    return;
+  }
+
+  if (actionName === "admin-board-search-clear") {
+    adminBoardSearchQuery = "";
+    adminBoardLoadedStatus = "";
+    render();
+    return;
+  }
+
+  if (actionName === "admin-board-approval") {
+    const card = element.closest(".admin-board-card");
+    const adminNote = card?.querySelector("[name='adminNote']")?.value || "";
+    updateAdminBoardApproval(element.dataset.id, element.dataset.status, adminNote);
     return;
   }
 
@@ -3490,10 +3866,7 @@ function handleAction(actionName, element) {
   }
 
   if (actionName === "delete-post") {
-    state.posts = state.posts.filter((post) => post.id !== element.dataset.id);
-    saveState();
-    showToast("게시글을 삭제했습니다.");
-    render();
+    deleteBoardPost(element.dataset.id);
     return;
   }
 
@@ -3524,6 +3897,11 @@ async function handleForm(formName, form) {
     adminCounts = { pending: 0, approved: 0, rejected: 0 };
     adminLoadedStatus = "";
     adminError = "";
+    adminBoardStatusFilter = "pending";
+    adminBoardSearchQuery = "";
+    adminBoardCounts = { pending: 0, approved: 0, rejected: 0 };
+    adminBoardLoadedStatus = "";
+    adminBoardError = "";
     showToast("관리자 토큰을 저장했습니다.");
     render();
     return;
@@ -3541,6 +3919,21 @@ async function handleForm(formName, form) {
     const approvalStatus = String(data.get("approvalStatus") || "pending");
     const adminNote = String(data.get("adminNote") || "").trim();
     updateAdminApproval(userId, approvalStatus, adminNote, { noteOnly: true });
+    return;
+  }
+
+  if (formName === "admin-board-search") {
+    adminBoardSearchQuery = String(data.get("query") || "").trim();
+    adminBoardLoadedStatus = "";
+    render();
+    return;
+  }
+
+  if (formName === "admin-board-note") {
+    const postId = String(data.get("postId") || "");
+    const approvalStatus = String(data.get("approvalStatus") || "pending");
+    const adminNote = String(data.get("adminNote") || "").trim();
+    updateAdminBoardApproval(postId, approvalStatus, adminNote, { noteOnly: true });
     return;
   }
 
@@ -3628,6 +4021,7 @@ async function handleForm(formName, form) {
       upsertUser(payload.user);
       state.sessionUserId = payload.user.id;
       state.pendingSignup = null;
+      resetBoardCache();
       saveState();
       showToast("로그인했습니다.");
       render();
@@ -3670,6 +4064,7 @@ async function handleForm(formName, form) {
     }
     state.sessionUserId = user.id;
     state.pendingSignup = null;
+    resetBoardCache();
     saveState();
     showToast("로그인했습니다.");
     render();
@@ -4005,41 +4400,12 @@ async function handleForm(formName, form) {
   }
 
   if (formName === "post-add") {
-    const user = requireUser();
-    if (!user) return;
-    const cat = state.cats.find((item) => item.id === String(data.get("catId")));
-    state.posts.push({
-      id: uid("post"),
-      userId: user.id,
-      author: user.name,
-      category: String(data.get("category")),
-      catId: cat?.id || "",
-      catName: cat?.name || "",
-      title: String(data.get("title")).trim(),
-      body: String(data.get("body")).trim(),
-      comments: [],
-      createdAt: new Date().toISOString()
-    });
-    saveState();
-    showToast("게시글을 등록했습니다.");
-    render();
+    await createBoardPost(data);
     return;
   }
 
   if (formName === "comment-add") {
-    const user = requireUser();
-    if (!user) return;
-    const post = state.posts.find((item) => item.id === String(data.get("postId")));
-    if (!post) return;
-    post.comments.push({
-      id: uid("comment"),
-      userId: user.id,
-      author: user.name,
-      body: String(data.get("body")).trim(),
-      createdAt: new Date().toISOString()
-    });
-    saveState();
-    render();
+    await createBoardComment(data);
   }
 }
 
@@ -5052,21 +5418,6 @@ function startDemo() {
     });
   }
 
-  if (!state.posts.some((post) => post.userId === user.id)) {
-    state.posts.push({
-      id: uid("post"),
-      userId: user.id,
-      author: user.name,
-      category: "후기",
-      catId: cat.id,
-      catName: cat.name,
-      title: "수액 스케줄을 앱에 옮겨봤어요",
-      body: "처방받은 ml와 반복 간격을 등록해두니 오늘 할 일이 바로 보여서 편합니다.",
-      comments: [],
-      createdAt: new Date().toISOString()
-    });
-  }
-
   state.activeCatId = cat.id;
   saveState();
   showToast("둘러보기 데이터가 준비되었습니다.");
@@ -5126,6 +5477,7 @@ async function deleteCurrentAccount() {
 
   removeUserData(user.id);
   clearAuthToken();
+  resetBoardCache();
   state.sessionUserId = null;
   state.pendingSignup = null;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));

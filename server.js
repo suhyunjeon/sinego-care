@@ -75,13 +75,51 @@ async function ensureSchema() {
         expires_at TIMESTAMPTZ NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS board_posts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        author_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        cat_name TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        approval_status TEXT NOT NULL DEFAULT 'pending'
+          CHECK (approval_status IN ('pending', 'approved', 'rejected')),
+        admin_note TEXT NOT NULL DEFAULT '',
+        approved_at TIMESTAMPTZ,
+        rejected_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE TABLE IF NOT EXISTS board_comments (
+        id TEXT PRIMARY KEY,
+        post_id TEXT NOT NULL REFERENCES board_posts(id) ON DELETE CASCADE,
+        user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
+        author_name TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
       CREATE INDEX IF NOT EXISTS idx_app_users_approval_status
         ON app_users (approval_status, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_app_sessions_user_id
         ON app_sessions (user_id);
+      CREATE INDEX IF NOT EXISTS idx_board_posts_created_at
+        ON board_posts (created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_board_comments_post_id
+        ON board_comments (post_id, created_at ASC);
 
       ALTER TABLE app_users
         ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT '';
+      ALTER TABLE board_posts
+        ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
+        ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
+        ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+
+      CREATE INDEX IF NOT EXISTS idx_board_posts_approval_status
+        ON board_posts (approval_status, created_at DESC);
     `).catch((error) => {
       schemaReadyPromise = null;
       throw error;
@@ -181,6 +219,38 @@ function adminUser(row) {
     adminNote: row.admin_note || "",
     rejectedAt: row.rejected_at,
     updatedAt: row.updated_at
+  };
+}
+
+function boardPost(row, comments = []) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    userId: row.user_id,
+    author: row.author_name,
+    category: row.category,
+    catName: row.cat_name || "",
+    title: row.title,
+    body: row.body,
+    approvalStatus: row.approval_status || "pending",
+    adminNote: row.admin_note || "",
+    approvedAt: row.approved_at,
+    rejectedAt: row.rejected_at,
+    comments,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function boardComment(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    postId: row.post_id,
+    userId: row.user_id,
+    author: row.author_name,
+    body: row.body,
+    createdAt: row.created_at
   };
 }
 
@@ -339,6 +409,198 @@ async function handlePutState(req, res) {
   sendJson(res, 200, { ok: true });
 }
 
+async function handleBoardPosts(req, res) {
+  const context = await requireUser(req, res);
+  if (!context) return;
+
+  if (req.method === "GET") {
+    const postsResult = await context.db.query(
+      `SELECT *
+         FROM board_posts
+        WHERE approval_status = 'approved'
+           OR user_id = $1
+        ORDER BY created_at DESC
+        LIMIT 200`,
+      [context.user.id]
+    );
+    const postIds = postsResult.rows.map((post) => post.id);
+    const commentsByPostId = new Map(postIds.map((id) => [id, []]));
+    if (postIds.length) {
+      const commentsResult = await context.db.query(
+        `SELECT *
+           FROM board_comments
+          WHERE post_id = ANY($1)
+          ORDER BY created_at ASC`,
+        [postIds]
+      );
+      commentsResult.rows.forEach((row) => {
+        const comments = commentsByPostId.get(row.post_id);
+        if (comments) comments.push(boardComment(row));
+      });
+    }
+    sendJson(res, 200, {
+      ok: true,
+      posts: postsResult.rows.map((row) => boardPost(row, commentsByPostId.get(row.id) || []))
+    });
+    return;
+  }
+
+  if (req.method === "POST") {
+    const body = await readJson(req);
+    const category = normalizeText(body.category).slice(0, 40) || "자료";
+    const catName = normalizeText(body.catName).slice(0, 80);
+    const title = normalizeText(body.title).slice(0, 120);
+    const postBody = normalizeText(body.body).slice(0, 5000);
+    if (!title || !postBody) {
+      sendError(res, 400, "제목과 내용을 입력해주세요.", "invalid_board_post");
+      return;
+    }
+    const result = await context.db.query(
+      `INSERT INTO board_posts (
+          id, user_id, author_name, category, cat_name, title, body
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING *`,
+      [
+        crypto.randomUUID(),
+        context.user.id,
+        context.user.cafe_nickname || context.user.name,
+        category,
+        catName,
+        title,
+        postBody
+      ]
+    );
+    sendJson(res, 201, { ok: true, post: boardPost(result.rows[0], []) });
+    return;
+  }
+
+  sendError(res, 405, "지원하지 않는 자료실 요청입니다.", "method_not_allowed");
+}
+
+async function handleBoardPost(req, res, postId) {
+  const context = await requireUser(req, res);
+  if (!context) return;
+
+  if (req.method === "DELETE") {
+    const result = await context.db.query(
+      "DELETE FROM board_posts WHERE id = $1 AND user_id = $2 RETURNING id",
+      [postId, context.user.id]
+    );
+    if (!result.rows[0]) {
+      sendError(res, 404, "삭제할 수 있는 자료를 찾지 못했습니다.", "board_post_not_found");
+      return;
+    }
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  sendError(res, 405, "지원하지 않는 자료 요청입니다.", "method_not_allowed");
+}
+
+async function handleBoardComments(req, res, postId) {
+  const context = await requireUser(req, res);
+  if (!context) return;
+  if (req.method !== "POST") {
+    sendError(res, 405, "지원하지 않는 의견 요청입니다.", "method_not_allowed");
+    return;
+  }
+  const body = await readJson(req);
+  const commentBody = normalizeText(body.body).slice(0, 1000);
+  if (!commentBody) {
+    sendError(res, 400, "의견 내용을 입력해주세요.", "invalid_board_comment");
+    return;
+  }
+  const postResult = await context.db.query(
+    "SELECT id FROM board_posts WHERE id = $1 AND approval_status = 'approved'",
+    [postId]
+  );
+  if (!postResult.rows[0]) {
+    sendError(res, 404, "공개된 자료를 찾지 못했습니다.", "board_post_not_found");
+    return;
+  }
+  const result = await context.db.query(
+    `INSERT INTO board_comments (id, post_id, user_id, author_name, body)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
+    [
+      crypto.randomUUID(),
+      postId,
+      context.user.id,
+      context.user.cafe_nickname || context.user.name,
+      commentBody
+    ]
+  );
+  sendJson(res, 201, { ok: true, comment: boardComment(result.rows[0]) });
+}
+
+async function handleAdminBoardPosts(req, res, url) {
+  const db = await requireDb(res);
+  if (!db || !requireAdmin(req, res)) return;
+  const requestedStatus = url.searchParams.get("status") || "pending";
+  const status = ["pending", "approved", "rejected"].includes(requestedStatus) ? requestedStatus : "pending";
+  const query = normalizeText(url.searchParams.get("q"));
+  const params = [status];
+  const filters = ["approval_status = $1"];
+  if (query) {
+    params.push(`%${query}%`);
+    filters.push(
+      `(title ILIKE $${params.length}
+        OR body ILIKE $${params.length}
+        OR author_name ILIKE $${params.length}
+        OR category ILIKE $${params.length}
+        OR cat_name ILIKE $${params.length}
+        OR admin_note ILIKE $${params.length})`
+    );
+  }
+  const result = await db.query(
+    `SELECT *
+       FROM board_posts
+      WHERE ${filters.join(" AND ")}
+      ORDER BY created_at DESC
+      LIMIT 200`,
+    params
+  );
+  const countsResult = await db.query(
+    `SELECT approval_status, count(*)::int AS count
+       FROM board_posts
+      GROUP BY approval_status`
+  );
+  const counts = { pending: 0, approved: 0, rejected: 0 };
+  countsResult.rows.forEach((row) => {
+    counts[row.approval_status] = row.count;
+  });
+  sendJson(res, 200, { ok: true, posts: result.rows.map((row) => boardPost(row, [])), counts });
+}
+
+async function handleAdminBoardApproval(req, res, postId) {
+  const db = await requireDb(res);
+  if (!db || !requireAdmin(req, res)) return;
+  const body = await readJson(req);
+  const approvalStatus = String(body.approvalStatus || "");
+  const adminNote = normalizeText(body.adminNote).slice(0, 1000);
+  if (!["approved", "rejected", "pending"].includes(approvalStatus)) {
+    sendError(res, 400, "approvalStatus는 pending, approved, rejected 중 하나여야 합니다.", "invalid_approval_status");
+    return;
+  }
+  const result = await db.query(
+    `UPDATE board_posts
+        SET approval_status = $1,
+            admin_note = $2,
+            approved_at = CASE WHEN $1 = 'approved' AND approval_status <> 'approved' THEN now() ELSE approved_at END,
+            rejected_at = CASE WHEN $1 = 'rejected' AND approval_status <> 'rejected' THEN now() ELSE rejected_at END,
+            updated_at = now()
+      WHERE id = $3
+      RETURNING *`,
+    [approvalStatus, adminNote, postId]
+  );
+  if (!result.rows[0]) {
+    sendError(res, 404, "자료를 찾을 수 없습니다.", "board_post_not_found");
+    return;
+  }
+  sendJson(res, 200, { ok: true, post: boardPost(result.rows[0], []) });
+}
+
 async function handleAdminUsers(req, res, url) {
   const db = await requireDb(res);
   if (!db || !requireAdmin(req, res)) return;
@@ -438,8 +700,31 @@ async function handleApi(req, res, url) {
       await handleDeleteAccount(req, res);
       return;
     }
+    if ((req.method === "GET" || req.method === "POST") && url.pathname === "/api/board/posts") {
+      await handleBoardPosts(req, res);
+      return;
+    }
+    const boardCommentMatch = url.pathname.match(/^\/api\/board\/posts\/([^/]+)\/comments$/);
+    if (boardCommentMatch) {
+      await handleBoardComments(req, res, decodeURIComponent(boardCommentMatch[1]));
+      return;
+    }
+    const boardPostMatch = url.pathname.match(/^\/api\/board\/posts\/([^/]+)$/);
+    if (boardPostMatch) {
+      await handleBoardPost(req, res, decodeURIComponent(boardPostMatch[1]));
+      return;
+    }
     if (req.method === "GET" && url.pathname === "/api/admin/users") {
       await handleAdminUsers(req, res, url);
+      return;
+    }
+    if (req.method === "GET" && url.pathname === "/api/admin/board-posts") {
+      await handleAdminBoardPosts(req, res, url);
+      return;
+    }
+    const boardApprovalMatch = url.pathname.match(/^\/api\/admin\/board-posts\/([^/]+)$/);
+    if (req.method === "PATCH" && boardApprovalMatch) {
+      await handleAdminBoardApproval(req, res, decodeURIComponent(boardApprovalMatch[1]));
       return;
     }
     const approvalMatch = url.pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
