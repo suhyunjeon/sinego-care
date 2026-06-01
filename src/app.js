@@ -430,6 +430,7 @@ function defaultState() {
     activeTab: "dashboard",
     activeCatId: null,
     editingCatId: null,
+    editingMedicationPlanId: null,
     users: [],
     cats: [],
     fluidPlans: [],
@@ -923,7 +924,9 @@ function renderSupportView() {
             </div>
           </div>
           <div class="notice" style="margin-top: 14px">
-            본 후원은 개인 운영 서비스 유지를 위한 자발적 운영비 후원이며, 기부금영수증은 발급되지 않습니다. 후원 여부는 회원 승인, 자료실 활동, 서비스 이용 가능 여부에 영향을 주지 않습니다.
+            본 후원은 서비스의 안정적인 서버 운영 및 유지 관리를 위한 자발적 운영비 후원입니다. 후원금은 서버 비용과 서비스 운영에 사용되며, 기부금영수증은 발급되지 않습니다.
+            <br /><br />
+            후원 여부는 회원 승인, 자료실 이용, 서비스 이용 가능 여부 등에 어떠한 영향도 미치지 않으며, 모든 회원은 동일한 기준으로 서비스를 이용하실 수 있습니다.
           </div>
         </div>
       </section>
@@ -2028,6 +2031,11 @@ function renderMedicationView() {
   const plans = user
     ? state.medicationPlans.filter((plan) => plan.userId === user.id && plan.active !== false && (!activeCat || plan.catId === activeCat.id))
     : [];
+  const editingPlan = user
+    ? state.medicationPlans.find((plan) => plan.id === state.editingMedicationPlanId && plan.userId === user.id) || null
+    : null;
+  const editingPreset = editingPlan ? findMedicationPresetByLabel(editingPlan.name) : null;
+  const formCatId = editingPlan?.catId || activeCat?.id;
   const upcoming = user ? getUpcomingMedicationOccurrences({ limit: 18, catId: activeCat?.id }) : [];
 
   return `
@@ -2043,21 +2051,23 @@ function renderMedicationView() {
         <div class="panel-inner">
           <div class="panel-head">
             <div>
-              <h2>스케줄 만들기</h2>
-              <p>${activeCat ? `${escapeHTML(activeCat.name)} 기준` : "고양이를 먼저 선택하세요"}</p>
+              <h2>${editingPlan ? "스케줄 수정" : "스케줄 만들기"}</h2>
+              <p>${editingPlan ? `${escapeHTML(editingPlan.name)} 계획을 수정합니다.` : activeCat ? `${escapeHTML(activeCat.name)} 기준` : "고양이를 먼저 선택하세요"}</p>
             </div>
+            ${editingPlan ? `<button class="btn small secondary" type="button" data-action="cancel-medication-edit">새 스케줄</button>` : ""}
           </div>
           <form class="grid medication-form" data-form="medication-plan">
+            <input type="hidden" name="id" value="${escapeAttr(editingPlan?.id || "")}" />
             <div class="form-grid">
               <div class="form-field">
                 <label for="med-cat">고양이</label>
                 <select class="select" id="med-cat" name="catId" required>
-                  ${renderCatOptions(activeCat?.id)}
+                  ${renderCatOptions(formCatId)}
                 </select>
               </div>
               <div class="form-field">
                 <label for="med-name">이름</label>
-                <input class="control" id="med-name" name="name" placeholder="직접 입력 또는 아래에서 선택" list="med-name-presets" />
+                <input class="control" id="med-name" name="name" value="${escapeAttr(editingPlan?.name || "")}" placeholder="직접 입력 또는 아래에서 선택" list="med-name-presets" />
                 <datalist id="med-name-presets">
                   <option value="인흡착제"></option>
                   <option value="레나메진"></option>
@@ -2081,76 +2091,77 @@ function renderMedicationView() {
               <div class="form-field">
                 <label for="med-category">종류</label>
                 <select class="select" id="med-category" name="category">
-                  <option value="영양제">영양제</option>
-                  <option value="식이섬유">식이섬유</option>
-                  <option value="인흡착제">인흡착제</option>
-                  <option value="처방약(병원)">처방약(병원)</option>
-                  <option value="보조제">보조제</option>
-                  <option value="기타">기타</option>
+                  ${renderMedicationCategoryOptions(editingPlan?.category || "영양제")}
                 </select>
               </div>
               <div class="form-field">
                 <label for="med-preset-select">빠른 선택</label>
                 <select class="select" id="med-preset-select" name="presetKey">
-                  ${renderMedicationPresetOptions()}
+                  ${renderMedicationPresetOptions(editingPreset?.key || "")}
                 </select>
               </div>
-              <div class="form-field full med-preset-panel" data-med-preset-panel>
-                <span class="field-label">영양제·처방 체크리스트</span>
-                <div class="choice-row">
-                  ${renderMedicationPresetChecklist()}
-                </div>
-              </div>
+              ${
+                editingPlan
+                  ? `<div class="form-field full">
+                      <div class="notice">수정 중에는 한 개 계획만 변경됩니다. 여러 영양제를 한 번에 추가하려면 새 스케줄로 등록해주세요.</div>
+                    </div>`
+                  : `<div class="form-field full med-preset-panel" data-med-preset-panel>
+                      <span class="field-label">영양제·처방 체크리스트</span>
+                      <div class="choice-row">
+                        ${renderMedicationPresetChecklist()}
+                      </div>
+                    </div>`
+              }
               <div class="form-field">
                 <label for="med-dose">1회 용량</label>
-                <input class="control" id="med-dose" name="dose" placeholder="1캡슐, 0.5정, 1ml" required />
+                <input class="control" id="med-dose" name="dose" value="${escapeAttr(editingPlan?.dose || "")}" placeholder="1캡슐, 0.5정, 1ml" required />
               </div>
               <div class="form-field">
                 <label for="med-route">방법</label>
                 <select class="select" id="med-route" name="route">
-                  <option>식후</option>
-                  <option>식전</option>
-                  <option>식사와 함께</option>
-                  <option>공복</option>
-                  <option>시간 고정</option>
+                  ${renderOptions(["식후", "식전", "식사와 함께", "공복", "시간 고정"], editingPlan?.route || "식후")}
                 </select>
               </div>
               <div class="form-field">
                 <label for="med-times">하루 횟수</label>
                 <select class="select" id="med-times" name="timesPerDay">
-                  <option value="1">1회</option>
-                  <option value="2">2회</option>
-                  <option value="3">3회</option>
-                  <option value="4">4회</option>
+                  ${renderNumberOptions([
+                    { value: 1, label: "1회" },
+                    { value: 2, label: "2회" },
+                    { value: 3, label: "3회" },
+                    { value: 4, label: "4회" }
+                  ], editingPlan?.timesPerDay || 1)}
                 </select>
               </div>
               <div class="form-field">
                 <label for="med-days">반복 간격</label>
                 <select class="select" id="med-days" name="intervalDays">
-                  <option value="1">매일</option>
-                  <option value="2">이틀마다</option>
-                  <option value="3">3일마다</option>
-                  <option value="7">매주</option>
+                  ${renderNumberOptions([
+                    { value: 1, label: "매일" },
+                    { value: 2, label: "이틀마다" },
+                    { value: 3, label: "3일마다" },
+                    { value: 7, label: "매주" }
+                  ], editingPlan?.intervalDays || 1)}
                 </select>
               </div>
               <div class="form-field">
                 <label for="med-time">첫 시간</label>
-                <input class="control" id="med-time" name="firstTime" type="time" value="09:00" required />
+                <input class="control" id="med-time" name="firstTime" type="time" value="${escapeAttr(editingPlan?.times?.[0] || "09:00")}" required />
               </div>
               <div class="form-field">
                 <label for="med-start">시작일</label>
-                <input class="control" id="med-start" name="startDate" type="date" value="${todayISO()}" required />
+                <input class="control" id="med-start" name="startDate" type="date" value="${escapeAttr(editingPlan?.startDate || todayISO())}" required />
               </div>
               <div class="form-field">
                 <label for="med-end">종료일</label>
-                <input class="control" id="med-end" name="endDate" type="date" />
+                <input class="control" id="med-end" name="endDate" type="date" value="${escapeAttr(editingPlan?.endDate || "")}" />
               </div>
               <div class="form-field full">
                 <label for="med-note">메모</label>
-                <textarea class="textarea" id="med-note" name="notes" placeholder="보관 방법, 먹이는 요령, 주의 반응"></textarea>
+                <textarea class="textarea" id="med-note" name="notes" placeholder="보관 방법, 먹이는 요령, 주의 반응">${escapeHTML(editingPlan?.notes || "")}</textarea>
               </div>
             </div>
-            <button class="btn primary" type="submit" ${activeCat ? "" : "disabled"}>스케줄 저장</button>
+            <button class="btn primary" type="submit" ${formCatId ? "" : "disabled"}>${editingPlan ? "스케줄 수정" : "스케줄 저장"}</button>
           </form>
           <div class="notice" style="margin-top: 14px">
             처방약의 용량과 중단 시점은 담당 수의사 지시를 우선하세요. 앱은 복용 시간을 잊지 않기 위한 기록 도구입니다.
@@ -2176,7 +2187,7 @@ function renderMedicationView() {
         <div class="panel-head">
           <div>
             <h2>등록된 투약 계획</h2>
-            <p>끝난 계획은 삭제할 수 있습니다.</p>
+            <p>계획을 수정하거나 끝난 계획을 삭제할 수 있습니다.</p>
           </div>
         </div>
         ${
@@ -2192,8 +2203,9 @@ function renderMedicationView() {
 function renderMedicationPlan(plan) {
   const cat = state.cats.find((item) => item.id === plan.catId);
   const period = plan.endDate ? `${plan.startDate} - ${plan.endDate}` : `${plan.startDate}부터`;
+  const editing = state.editingMedicationPlanId === plan.id;
   return `
-    <article class="item">
+    <article class="item ${editing ? "is-active" : ""}">
       <div class="item-head">
         <div>
           <h3>${escapeHTML(plan.name)}</h3>
@@ -2205,18 +2217,39 @@ function renderMedicationPlan(plan) {
             ${plan.times.map((time) => `<span class="chip">${time}</span>`).join("")}
           </div>
         </div>
-        <button class="btn small danger" data-action="delete-medication-plan" data-id="${plan.id}">삭제</button>
+        <div class="actions">
+          <button class="btn small ${editing ? "primary" : "secondary"}" data-action="edit-medication-plan" data-id="${escapeAttr(plan.id)}">${editing ? "수정 중" : "수정"}</button>
+          <button class="btn small danger" data-action="delete-medication-plan" data-id="${escapeAttr(plan.id)}">삭제</button>
+        </div>
       </div>
     </article>
   `;
 }
 
-function renderMedicationPresetChecklist() {
+function renderMedicationCategoryOptions(selectedCategory = "영양제") {
+  return ["영양제", "식이섬유", "인흡착제", "처방약(병원)", "보조제", "기타"]
+    .map(
+      (category) =>
+        `<option value="${escapeAttr(category)}" ${category === selectedCategory ? "selected" : ""}>${escapeHTML(category)}</option>`
+    )
+    .join("");
+}
+
+function renderNumberOptions(options, selectedValue) {
+  return options
+    .map(
+      (option) =>
+        `<option value="${option.value}" ${Number(option.value) === Number(selectedValue) ? "selected" : ""}>${escapeHTML(option.label)}</option>`
+    )
+    .join("");
+}
+
+function renderMedicationPresetChecklist(selectedKeys = []) {
   return medicationPresets
     .map(
       (preset) => `
         <label class="check-pill med-preset-pill">
-          <input type="checkbox" name="presetKeys" value="${escapeAttr(preset.key)}" />
+          <input type="checkbox" name="presetKeys" value="${escapeAttr(preset.key)}" ${selectedKeys.includes(preset.key) ? "checked" : ""} />
           <span>${escapeHTML(preset.label)}</span>
           <small>${escapeHTML(preset.category === preset.classification ? preset.category : preset.classification)}</small>
         </label>
@@ -2225,13 +2258,13 @@ function renderMedicationPresetChecklist() {
     .join("");
 }
 
-function renderMedicationPresetOptions() {
+function renderMedicationPresetOptions(selectedKey = "") {
   return `
-    <option value="">직접 입력 또는 체크리스트 선택</option>
+    <option value="" ${selectedKey ? "" : "selected"}>직접 입력 또는 체크리스트 선택</option>
     ${medicationPresets
       .map(
         (preset) =>
-          `<option value="${escapeAttr(preset.key)}">${escapeHTML(preset.label)} · ${escapeHTML(preset.category)}</option>`
+          `<option value="${escapeAttr(preset.key)}" ${preset.key === selectedKey ? "selected" : ""}>${escapeHTML(preset.label)} · ${escapeHTML(preset.category)}</option>`
       )
       .join("")}
   `;
@@ -3593,6 +3626,7 @@ async function createBoardComment(formData) {
 function handleAction(actionName, element) {
   if (actionName === "logout") {
     state.sessionUserId = null;
+    state.editingMedicationPlanId = null;
     clearAuthToken();
     resetBoardCache();
     saveState();
@@ -3602,6 +3636,7 @@ function handleAction(actionName, element) {
   }
 
   if (actionName === "start-demo") {
+    state.editingMedicationPlanId = null;
     resetBoardCache();
     startDemo();
     return;
@@ -3751,6 +3786,9 @@ function handleAction(actionName, element) {
     state.weightLogs = state.weightLogs.filter((item) => item.catId !== cat.id);
     if (state.activeCatId === cat.id) state.activeCatId = getUserCats()[0]?.id || null;
     if (state.editingCatId === cat.id) state.editingCatId = null;
+    if (state.editingMedicationPlanId && !state.medicationPlans.some((plan) => plan.id === state.editingMedicationPlanId)) {
+      state.editingMedicationPlanId = null;
+    }
     saveState();
     showToast("프로필을 삭제했습니다.");
     render();
@@ -3766,9 +3804,27 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "edit-medication-plan") {
+    const plan = state.medicationPlans.find((item) => item.id === element.dataset.id);
+    if (!plan) return;
+    state.editingMedicationPlanId = plan.id;
+    state.activeCatId = plan.catId;
+    saveState();
+    render();
+    return;
+  }
+
+  if (actionName === "cancel-medication-edit") {
+    state.editingMedicationPlanId = null;
+    saveState();
+    render();
+    return;
+  }
+
   if (actionName === "delete-medication-plan") {
     state.medicationPlans = state.medicationPlans.filter((plan) => plan.id !== element.dataset.id);
     state.medicationLogs = state.medicationLogs.filter((log) => log.planId !== element.dataset.id);
+    if (state.editingMedicationPlanId === element.dataset.id) state.editingMedicationPlanId = null;
     saveState();
     showToast("투약 계획을 삭제했습니다.");
     render();
@@ -4021,6 +4077,7 @@ async function handleForm(formName, form) {
       upsertUser(payload.user);
       state.sessionUserId = payload.user.id;
       state.pendingSignup = null;
+      state.editingMedicationPlanId = null;
       resetBoardCache();
       saveState();
       showToast("로그인했습니다.");
@@ -4064,6 +4121,7 @@ async function handleForm(formName, form) {
     }
     state.sessionUserId = user.id;
     state.pendingSignup = null;
+    state.editingMedicationPlanId = null;
     resetBoardCache();
     saveState();
     showToast("로그인했습니다.");
@@ -4146,6 +4204,17 @@ async function handleForm(formName, form) {
   if (formName === "medication-plan") {
     const user = requireUser();
     if (!user) return;
+    const editingPlanId = String(data.get("id") || "");
+    const existingPlan = editingPlanId
+      ? state.medicationPlans.find((plan) => plan.id === editingPlanId && plan.userId === user.id)
+      : null;
+    if (editingPlanId && !existingPlan) {
+      state.editingMedicationPlanId = null;
+      saveState();
+      showToast("수정할 투약 계획을 찾지 못했습니다.");
+      render();
+      return;
+    }
     const times = buildTimes(String(data.get("firstTime")), toNumber(data.get("timesPerDay")));
     const manualName = String(data.get("name") || "").trim();
     const selectedPreset = getMedicationPreset(String(data.get("presetKey") || ""));
@@ -4153,13 +4222,27 @@ async function handleForm(formName, form) {
       .getAll("presetKeys")
       .map((key) => getMedicationPreset(String(key)))
       .filter(Boolean);
-    if (selectedPreset && !selectedPresets.some((preset) => preset.key === selectedPreset.key)) {
+    if (!existingPlan && selectedPreset && !selectedPresets.some((preset) => preset.key === selectedPreset.key)) {
       selectedPresets.push(selectedPreset);
     }
     const manualPreset = findMedicationPresetByLabel(manualName);
-    const entries = selectedPresets.length
-      ? selectedPresets
-      : [{ label: manualName, category: String(data.get("category")), classification: manualPreset?.classification || "" }];
+    const useSelectedPresetForEdit =
+      existingPlan && selectedPreset && (!manualName || manualName === selectedPreset.label);
+    const entries = existingPlan
+      ? [
+          {
+            label: manualName || selectedPreset?.label || "",
+            category: useSelectedPresetForEdit
+              ? selectedPreset.category
+              : manualPreset?.category || String(data.get("category")),
+            classification: useSelectedPresetForEdit
+              ? selectedPreset.classification
+              : manualPreset?.classification || existingPlan.classification || ""
+          }
+        ]
+      : selectedPresets.length
+        ? selectedPresets
+        : [{ label: manualName, category: String(data.get("category")), classification: manualPreset?.classification || "" }];
     if (!entries[0].label) {
       showToast("이름을 입력하거나 체크리스트에서 선택해주세요.");
       render();
@@ -4178,6 +4261,23 @@ async function handleForm(formName, form) {
       notes: String(data.get("notes") || "").trim(),
       active: true
     };
+    if (existingPlan) {
+      const entry = entries[0];
+      Object.assign(existingPlan, {
+        ...basePlan,
+        name: entry.label,
+        category: entry.category,
+        classification: entry.classification || "",
+        createdAt: existingPlan.createdAt,
+        updatedAt: new Date().toISOString()
+      });
+      state.activeCatId = basePlan.catId;
+      state.editingMedicationPlanId = null;
+      saveState();
+      showToast("투약·영양제 스케줄을 수정했습니다.");
+      render();
+      return;
+    }
     entries.forEach((entry) => {
       state.medicationPlans.push({
         id: uid("med"),
@@ -5510,6 +5610,9 @@ function removeUserData(userId) {
   }
   if (state.editingCatId && !state.cats.some((cat) => cat.id === state.editingCatId)) {
     state.editingCatId = null;
+  }
+  if (state.editingMedicationPlanId && !state.medicationPlans.some((plan) => plan.id === state.editingMedicationPlanId)) {
+    state.editingMedicationPlanId = null;
   }
 }
 
