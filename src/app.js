@@ -20,6 +20,8 @@ const tabs = [
 const operatorName = "전수현";
 const supportAccountText = "카카오뱅크 79423347182 / 전수현";
 const supportLink = "";
+const DEFAULT_CAT_LIMIT_PER_USER = 5;
+const MAX_CAT_LIMIT_PER_USER = 20;
 
 const healthOptions = {
   kidney: {
@@ -177,6 +179,15 @@ const labTrendRanges = [
   { key: "all", label: "전체", title: "전체", days: null }
 ];
 const weightTrendRanges = labTrendRanges;
+const reportRanges = labTrendRanges;
+const reportSectionOptions = [
+  { key: "profile", label: "기본 정보" },
+  { key: "routines", label: "수액·투약 루틴" },
+  { key: "labs", label: "혈검 수치" },
+  { key: "weight", label: "체중 기록" },
+  { key: "symptoms", label: "증상 기록" },
+  { key: "questions", label: "병원 질문" }
+];
 const trendPointGapPx = 14;
 
 const PDFJS_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.mjs";
@@ -450,7 +461,14 @@ function defaultState() {
     snackResult: null,
     selectedLabTrendKey: "crea",
     selectedLabTrendRange: "3m",
-    selectedWeightTrendRange: "3m"
+    selectedWeightTrendRange: "3m",
+    reportSettings: {
+      catId: "",
+      range: "3m",
+      sections: reportSectionOptions.map((section) => section.key),
+      questions: ""
+    },
+    showDashboardReport: false
   };
 }
 
@@ -474,7 +492,12 @@ function loadState() {
       weightLogs: Array.isArray(saved.weightLogs) ? saved.weightLogs : [],
       customFoods: Array.isArray(saved.customFoods) ? saved.customFoods : [],
       customResources: Array.isArray(saved.customResources) ? saved.customResources : [],
-      posts: Array.isArray(saved.posts) ? saved.posts : []
+      posts: Array.isArray(saved.posts) ? saved.posts : [],
+      reportSettings:
+        saved.reportSettings && typeof saved.reportSettings === "object"
+          ? normalizeReportSettings(saved.reportSettings)
+          : base.reportSettings,
+      showDashboardReport: Boolean(saved.showDashboardReport)
     };
   } catch {
     return defaultState();
@@ -809,7 +832,7 @@ function renderDashboardView() {
         <p>수액, 투약·영양제, 식사, 체중 기록을 한 화면에서 확인합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
       <div class="actions">
-        <button class="btn secondary" data-action="export-data">내 데이터 내보내기</button>
+        <button class="btn report-cta" data-action="toggle-dashboard-report" ${activeCat ? "" : "disabled"}>내 데이터 보내기</button>
       </div>
     </section>
 
@@ -850,6 +873,7 @@ function renderDashboardView() {
         ${renderDashboardWeightPanel()}
       </div>
     </div>
+    ${user && activeCat && state.showDashboardReport ? renderDashboardReportPanel() : ""}
   `;
 }
 
@@ -1210,6 +1234,7 @@ function renderAdminBoardStatusButton(status, label) {
 }
 
 function renderAdminUserItem(user) {
+  const catLimit = getUserCatLimit(user);
   return `
     <article class="item admin-user-card">
       <div class="item-head">
@@ -1219,6 +1244,7 @@ function renderAdminUserItem(user) {
           <div class="chips">
             <span class="chip ${user.approvalStatus === "approved" ? "blue" : user.approvalStatus === "rejected" ? "coral" : "amber"}">${renderApprovalStatusLabel(user.approvalStatus)}</span>
             <span class="chip">신청 ${formatDateTime(user.approvalRequestedAt || user.createdAt)}</span>
+            <span class="chip">고양이 한도 ${catLimit}마리</span>
             ${user.approvedAt ? `<span class="chip blue">승인 ${formatDateTime(user.approvedAt)}</span>` : ""}
             ${user.rejectedAt ? `<span class="chip coral">보류 ${formatDateTime(user.rejectedAt)}</span>` : ""}
           </div>
@@ -1232,10 +1258,28 @@ function renderAdminUserItem(user) {
       <form class="admin-note-form" data-form="admin-note">
         <input type="hidden" name="userId" value="${escapeAttr(user.id)}" />
         <input type="hidden" name="approvalStatus" value="${escapeAttr(user.approvalStatus || "pending")}" />
-        <label for="admin-note-${escapeAttr(user.id)}">운영 메모</label>
-        <textarea class="textarea" id="admin-note-${escapeAttr(user.id)}" name="adminNote" maxlength="1000" placeholder="닉네임 확인 결과, 보류 사유, 재확인 필요 사항">${escapeHTML(user.adminNote || "")}</textarea>
+        <div class="form-grid">
+          <div class="form-field full">
+            <label for="admin-note-${escapeAttr(user.id)}">운영 메모</label>
+            <textarea class="textarea" id="admin-note-${escapeAttr(user.id)}" name="adminNote" maxlength="1000" placeholder="닉네임 확인 결과, 보류 사유, 재확인 필요 사항">${escapeHTML(user.adminNote || "")}</textarea>
+          </div>
+          <div class="form-field">
+            <label for="admin-cat-limit-${escapeAttr(user.id)}">고양이 등록 한도</label>
+            <input
+              class="control"
+              id="admin-cat-limit-${escapeAttr(user.id)}"
+              name="catLimit"
+              type="number"
+              min="1"
+              max="${MAX_CAT_LIMIT_PER_USER}"
+              step="1"
+              value="${catLimit}"
+            />
+            <p class="field-help">기본 ${DEFAULT_CAT_LIMIT_PER_USER}마리, 구조·임보 등 예외 회원은 운영자가 조정할 수 있습니다.</p>
+          </div>
+        </div>
         <div class="actions">
-          <button class="btn small secondary" type="submit">메모 저장</button>
+          <button class="btn small secondary" type="submit">메모·한도 저장</button>
         </div>
       </form>
     </article>
@@ -1368,16 +1412,17 @@ async function updateAdminApproval(userId, approvalStatus, adminNote = "", optio
     showToast("관리자 토큰을 먼저 저장해주세요.");
     return;
   }
+  const catLimit = normalizeCatLimit(options.catLimit);
   adminLoading = true;
   adminError = "";
   render();
   try {
     await adminApiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
       method: "PATCH",
-      body: { approvalStatus, adminNote }
+      body: { approvalStatus, adminNote, catLimit }
     });
     adminLoadedStatus = "";
-    showToast(options.noteOnly ? "운영 메모를 저장했습니다." : `${renderApprovalStatusLabel(approvalStatus)} 처리했습니다.`);
+    showToast(options.noteOnly ? "운영 메모와 등록 한도를 저장했습니다." : `${renderApprovalStatusLabel(approvalStatus)} 처리했습니다.`);
     await loadAdminUsers();
   } catch (error) {
     adminError = error.message || "승인 상태를 변경하지 못했습니다.";
@@ -1601,15 +1646,20 @@ function renderCatPanel() {
 
   const cats = getUserCats();
   const editingCat = cats.find((cat) => cat.id === state.editingCatId) || null;
+  const catLimit = getUserCatLimit(user);
+  const reachedCatLimit = !editingCat && cats.length >= catLimit;
   return `
     <section class="panel">
       <div class="panel-inner">
         <div class="panel-head">
           <div>
             <h2>${editingCat ? "고양이 프로필 수정" : "고양이 프로필"}</h2>
-            <p>${editingCat ? `${escapeHTML(editingCat.name)} 정보를 수정합니다.` : "체중, 추정 출생연도, 건강상태를 케어 계산에 사용합니다."}</p>
+            <p>${editingCat ? `${escapeHTML(editingCat.name)} 정보를 수정합니다.` : `체중, 추정 출생연도, 건강상태를 케어 계산에 사용합니다. 현재 ${cats.length}/${catLimit}마리 등록됨`}</p>
           </div>
           ${editingCat ? `<button class="btn small secondary" data-action="cancel-cat-edit">새 프로필</button>` : ""}
+        </div>
+        <div class="notice" style="margin-bottom: 14px">
+          계정당 기본 ${DEFAULT_CAT_LIMIT_PER_USER}마리까지 등록할 수 있습니다. 구조·임보 등으로 더 많은 고양이 기록이 필요하면 운영자에게 문의해주세요. 운영자가 확인 후 등록 한도를 조정할 수 있습니다.
         </div>
         <div class="list">
           ${
@@ -1618,51 +1668,55 @@ function renderCatPanel() {
               : `<div class="empty">첫 고양이 프로필을 추가하세요.</div>`
           }
         </div>
-        <form class="grid" data-form="cat" style="margin-top: 14px">
-          <input type="hidden" name="id" value="${escapeAttr(editingCat?.id || "")}" />
-          <div class="form-grid">
-            <div class="form-field">
-              <label for="cat-name">이름</label>
-              <input class="control" id="cat-name" name="name" value="${escapeAttr(editingCat?.name || "")}" required />
-            </div>
-            <div class="form-field">
-              <label for="cat-birth-year">연도(추정)</label>
-              <input class="control" id="cat-birth-year" name="birthYear" type="number" min="1980" max="${getCurrentYear()}" step="1" placeholder="예: 2015" value="${getCatBirthYearValue(editingCat)}" required />
-            </div>
-            <div class="form-field">
-              <label for="cat-weight">체중 kg</label>
-              <input class="control" id="cat-weight" name="weightKg" type="number" min="0.2" max="20" step="0.01" value="${editingCat?.weightKg ?? ""}" required />
-            </div>
-            <div class="form-field">
-              <label for="cat-bcs">BCS 1-9</label>
-              <select class="select" id="cat-bcs" name="bcs">
-                ${range(1, 9)
-                  .map((value) => `<option value="${value}" ${value === (editingCat?.bcs || 5) ? "selected" : ""}>${value}</option>`)
-                  .join("")}
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="cat-neutered">중성화</label>
-              <select class="select" id="cat-neutered" name="neutered">
-                <option value="yes" ${editingCat?.neutered !== "no" ? "selected" : ""}>완료</option>
-                <option value="no" ${editingCat?.neutered === "no" ? "selected" : ""}>미완료</option>
-              </select>
-            </div>
-            <div class="form-field">
-              <label for="cat-activity">활동량</label>
-              <select class="select" id="cat-activity" name="activity">
-                <option value="low" ${editingCat?.activity === "low" ? "selected" : ""}>낮음</option>
-                <option value="normal" ${!editingCat || editingCat.activity === "normal" ? "selected" : ""}>보통</option>
-                <option value="active" ${editingCat?.activity === "active" ? "selected" : ""}>높음</option>
-              </select>
-            </div>
-            <div class="form-field full">
-              <span class="field-label">건강상태</span>
-              ${renderHealthChoices(editingCat?.health || [])}
-            </div>
-          </div>
-          <button class="btn primary" type="submit">${editingCat ? "프로필 수정" : "프로필 추가"}</button>
-        </form>
+        ${
+          reachedCatLimit
+            ? `<div class="empty" style="margin-top: 14px">등록 한도 ${catLimit}마리에 도달했습니다. 기존 프로필은 수정할 수 있고, 추가 등록이 필요하면 운영자에게 문의해주세요.</div>`
+            : `<form class="grid" data-form="cat" style="margin-top: 14px">
+                <input type="hidden" name="id" value="${escapeAttr(editingCat?.id || "")}" />
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="cat-name">이름</label>
+                    <input class="control" id="cat-name" name="name" value="${escapeAttr(editingCat?.name || "")}" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="cat-birth-year">연도(추정)</label>
+                    <input class="control" id="cat-birth-year" name="birthYear" type="number" min="1980" max="${getCurrentYear()}" step="1" placeholder="예: 2015" value="${getCatBirthYearValue(editingCat)}" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="cat-weight">체중 kg</label>
+                    <input class="control" id="cat-weight" name="weightKg" type="number" min="0.2" max="20" step="0.01" value="${editingCat?.weightKg ?? ""}" required />
+                  </div>
+                  <div class="form-field">
+                    <label for="cat-bcs">BCS 1-9</label>
+                    <select class="select" id="cat-bcs" name="bcs">
+                      ${range(1, 9)
+                        .map((value) => `<option value="${value}" ${value === (editingCat?.bcs || 5) ? "selected" : ""}>${value}</option>`)
+                        .join("")}
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="cat-neutered">중성화</label>
+                    <select class="select" id="cat-neutered" name="neutered">
+                      <option value="yes" ${editingCat?.neutered !== "no" ? "selected" : ""}>완료</option>
+                      <option value="no" ${editingCat?.neutered === "no" ? "selected" : ""}>미완료</option>
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="cat-activity">활동량</label>
+                    <select class="select" id="cat-activity" name="activity">
+                      <option value="low" ${editingCat?.activity === "low" ? "selected" : ""}>낮음</option>
+                      <option value="normal" ${!editingCat || editingCat.activity === "normal" ? "selected" : ""}>보통</option>
+                      <option value="active" ${editingCat?.activity === "active" ? "selected" : ""}>높음</option>
+                    </select>
+                  </div>
+                  <div class="form-field full">
+                    <span class="field-label">건강상태</span>
+                    ${renderHealthChoices(editingCat?.health || [])}
+                  </div>
+                </div>
+                <button class="btn primary" type="submit">${editingCat ? "프로필 수정" : "프로필 추가"}</button>
+              </form>`
+        }
       </div>
     </section>
   `;
@@ -3238,6 +3292,351 @@ function renderWeightView() {
   `;
 }
 
+function renderDashboardReportPanel() {
+  const cats = getUserCats();
+  const settings = normalizeReportSettings(state.reportSettings);
+  const reportCat = getReportCat(cats, settings);
+  const selectedRange = getReportRange(settings.range);
+
+  return `
+    <section class="panel no-print dashboard-report-panel" id="dashboard-report-panel">
+      <div class="panel-inner">
+        <div class="panel-head">
+          <div>
+            <h2>내 데이터 보내기</h2>
+            <p>${reportCat ? `${escapeHTML(reportCat.name)} · ${escapeHTML(selectedRange.title)} 진료 상담용 리포트` : "고양이를 먼저 등록하세요"}</p>
+          </div>
+          <button class="btn small secondary" data-action="toggle-dashboard-report">닫기</button>
+        </div>
+        ${
+          cats.length
+            ? `<form class="grid" data-form="report-settings">
+                <div class="form-grid">
+                  <div class="form-field">
+                    <label for="report-cat">고양이</label>
+                    <select class="select" id="report-cat" name="catId">
+                      ${cats
+                        .map((cat) => `<option value="${escapeAttr(cat.id)}" ${cat.id === reportCat?.id ? "selected" : ""}>${escapeHTML(cat.name)}</option>`)
+                        .join("")}
+                    </select>
+                  </div>
+                  <div class="form-field">
+                    <label for="report-range">기간</label>
+                    <select class="select" id="report-range" name="range">
+                      ${reportRanges
+                        .map((range) => `<option value="${escapeAttr(range.key)}" ${range.key === settings.range ? "selected" : ""}>${escapeHTML(range.label)}</option>`)
+                        .join("")}
+                    </select>
+                  </div>
+                  <div class="form-field full">
+                    <span class="field-label">포함할 항목</span>
+                    <div class="choice-row">
+                      ${renderReportSectionChoices(settings.sections)}
+                    </div>
+                  </div>
+                  <div class="form-field full">
+                    <label for="report-questions">병원에 물어볼 질문</label>
+                    <textarea class="textarea" id="report-questions" name="questions" placeholder="예: 수액량 조정 여부, 인흡착제 용량, 식욕저하 원인">${escapeHTML(settings.questions)}</textarea>
+                  </div>
+                </div>
+                <div class="actions">
+                  <button class="btn primary" type="submit">리포트 갱신</button>
+                  <button class="btn report-cta" type="button" data-action="print-report">PDF로 저장</button>
+                </div>
+                <p class="field-help">PDF로 저장을 누른 뒤 브라우저 인쇄창에서 대상 또는 프린터를 PDF 저장으로 선택하세요.</p>
+              </form>`
+            : `<div class="empty">고양이 프로필을 먼저 등록하면 진료 리포트를 만들 수 있습니다.</div>`
+        }
+        <div class="notice" style="margin-top: 14px">
+          이 리포트는 보호자가 입력한 기록을 상담용으로 정리한 자료입니다. 진단, 처방, 약물 중단 여부는 담당 수의사의 판단을 우선하세요.
+        </div>
+      </div>
+    </section>
+    ${
+      reportCat
+        ? `<section class="panel report-preview-panel">
+            <div class="panel-inner">
+              ${renderReportDocument(reportCat, settings)}
+            </div>
+          </section>`
+        : ""
+    }
+  `;
+}
+
+function renderReportSectionChoices(selectedSections) {
+  return reportSectionOptions
+    .map(
+      (section) => `
+        <label class="check-pill">
+          <input type="checkbox" name="sections" value="${escapeAttr(section.key)}" ${selectedSections.includes(section.key) ? "checked" : ""} />
+          <span>${escapeHTML(section.label)}</span>
+        </label>
+      `
+    )
+    .join("");
+}
+
+function renderReportDocument(cat, settings) {
+  const range = getReportRange(settings.range);
+  const sections = new Set(settings.sections);
+  return `
+    <article class="report-document" data-print-report>
+      <header class="report-header">
+        <div>
+          <p class="report-eyebrow">진료 상담용 리포트</p>
+          <h2>${escapeHTML(cat.name)}</h2>
+          <p>${escapeHTML(range.title)} 기록 · 작성일 ${formatTodayLabel()}</p>
+        </div>
+        <div class="report-brand">신장질환을 이긴 고양이 케어</div>
+      </header>
+      <div class="report-disclaimer">
+        보호자 기록 관리 자료이며 수의사의 진료·처방을 대체하지 않습니다. 병원 검사지 참고범위와 담당 수의사의 설명을 우선하세요.
+      </div>
+      ${sections.has("profile") ? renderReportProfile(cat) : ""}
+      ${sections.has("routines") ? renderReportRoutines(cat) : ""}
+      ${sections.has("labs") ? renderReportLabs(cat, settings.range) : ""}
+      ${sections.has("weight") ? renderReportWeight(cat, settings.range) : ""}
+      ${sections.has("symptoms") ? renderReportSymptoms(cat, settings.range) : ""}
+      ${sections.has("questions") ? renderReportQuestions(settings.questions) : ""}
+    </article>
+  `;
+}
+
+function renderReportProfile(cat) {
+  const healthLabels = cat.health?.length ? cat.health.map(getHealthLabel).join(", ") : "일반관리";
+  const calorie = calorieProfile(cat);
+  return `
+    <section class="report-section">
+      <h3>기본 정보</h3>
+      <div class="grid three report-metrics">
+        ${renderReportMetric("체중", `${formatNumber(cat.weightKg, 2)} kg`, "프로필 기준")}
+        ${renderReportMetric("연도(추정)", getCatBirthYearValue(cat) ? `${getCatBirthYearValue(cat)}년` : "-", `${formatNumber(getCatAgeYears(cat), 0)}살 추정`)}
+        ${renderReportMetric("BCS", `${cat.bcs}/9`, cat.bcs >= 7 ? "체중감량 상담" : cat.bcs <= 4 ? "체중회복 관찰" : "중간 범위")}
+        ${renderReportMetric("활동량", renderActivityLabel(cat.activity), cat.neutered === "no" ? "중성화 미완료" : "중성화 완료")}
+        ${renderReportMetric("건강상태", healthLabels, "프로필 체크 항목")}
+        ${renderReportMetric("권장 열량", `${formatNumber(calorie.target)} kcal`, calorie.notes.join(", "))}
+      </div>
+    </section>
+  `;
+}
+
+function renderReportRoutines(cat) {
+  const user = currentUser();
+  const fluidPlans = state.fluidPlans.filter(
+    (plan) => user && plan.userId === user.id && plan.catId === cat.id && plan.active !== false
+  );
+  const medicationPlans = state.medicationPlans.filter(
+    (plan) => user && plan.userId === user.id && plan.catId === cat.id && plan.active !== false
+  );
+  return `
+    <section class="report-section">
+      <h3>수액·투약 루틴</h3>
+      <h4>수액</h4>
+      ${renderReportTable(
+        ["스케줄", "종류", "용량/주기", "시간", "메모"],
+        fluidPlans.map(
+          (plan) => `
+            <tr>
+              <td>${escapeHTML(plan.name)}</td>
+              <td>${escapeHTML(plan.fluidType || "수액")}</td>
+              <td>${formatNumber(plan.doseMl)} ml · ${plan.intervalDays === 1 ? "매일" : `${plan.intervalDays}일마다`}</td>
+              <td>${plan.times.map(escapeHTML).join(", ")}</td>
+              <td>${escapeHTML(plan.notes || "")}</td>
+            </tr>
+          `
+        ),
+        "등록된 수액 계획이 없습니다."
+      )}
+      <h4>투약·영양제</h4>
+      ${renderReportTable(
+        ["이름", "분류", "용량/방법", "시간", "기간/메모"],
+        medicationPlans.map(
+          (plan) => `
+            <tr>
+              <td>${escapeHTML(plan.name)}</td>
+              <td>${escapeHTML(plan.category)}${plan.classification ? ` · ${escapeHTML(plan.classification)}` : ""}</td>
+              <td>${escapeHTML(plan.dose)} · ${escapeHTML(plan.route)}</td>
+              <td>${plan.times.map(escapeHTML).join(", ")}</td>
+              <td>${escapeHTML(plan.startDate)}${plan.endDate ? `-${escapeHTML(plan.endDate)}` : "부터"}${plan.notes ? ` · ${escapeHTML(plan.notes)}` : ""}</td>
+            </tr>
+          `
+        ),
+        "등록된 투약 계획이 없습니다."
+      )}
+    </section>
+  `;
+}
+
+function renderReportLabs(cat, rangeKey) {
+  const logs = getReportLogs(
+    state.labLogs.filter((log) => log.catId === cat.id),
+    rangeKey
+  );
+  const latest = logs.at(-1);
+  const previous = logs.length > 1 ? logs.at(-2) : null;
+  const summaryKeys = latest
+    ? labSummaryKeys.filter((key) => Number.isFinite(Number(latest.values?.[key])))
+    : [];
+
+  return `
+    <section class="report-section">
+      <h3>혈검·신장수치</h3>
+      ${
+        latest
+          ? `<div class="grid four report-metrics">
+              ${summaryKeys
+                .slice(0, 8)
+                .map((key) => {
+                  const field = getLabField(key);
+                  return renderReportMetric(
+                    field.label,
+                    formatLabValue(latest.values[key], field),
+                    previous ? renderLabDelta(latest.values[key], previous.values?.[key], field) : "첫 기록"
+                  );
+                })
+                .join("")}
+            </div>`
+          : `<div class="empty">선택한 기간의 혈검 기록이 없습니다.</div>`
+      }
+      ${renderReportTable(
+        ["검사일", "주요 수치", "병원/파일", "메모"],
+        logs
+          .slice()
+          .reverse()
+          .map((log) => {
+            const chips = labSummaryKeys
+              .filter((key) => Number.isFinite(Number(log.values?.[key])))
+              .map((key) => {
+                const field = getLabField(key);
+                return `${field.label} ${formatLabValue(log.values[key], field)}`;
+              })
+              .join(" · ");
+            return `
+              <tr>
+                <td>${escapeHTML(log.date)}</td>
+                <td>${escapeHTML(chips || "입력 수치 없음")}</td>
+                <td>${escapeHTML([log.hospital, log.reportName].filter(Boolean).join(" · ") || "-")}</td>
+                <td>${escapeHTML(log.notes || "")}</td>
+              </tr>
+            `;
+          }),
+        "선택한 기간의 혈검 기록이 없습니다."
+      )}
+    </section>
+  `;
+}
+
+function renderReportWeight(cat, rangeKey) {
+  const logs = getReportLogs(
+    state.weightLogs.filter((log) => log.catId === cat.id),
+    rangeKey
+  );
+  const latest = logs.at(-1);
+  const first = logs[0];
+  const delta = latest && first ? Number(latest.weightKg) - Number(first.weightKg) : 0;
+  return `
+    <section class="report-section">
+      <h3>체중 기록</h3>
+      <div class="grid three report-metrics">
+        ${renderReportMetric("최근 체중", latest ? `${formatNumber(latest.weightKg, 2)} kg` : "-", latest?.date || "기록 없음")}
+        ${renderReportMetric("기간 변화", logs.length > 1 ? `${delta >= 0 ? "+" : ""}${formatNumber(delta, 2)} kg` : "-", logs.length > 1 ? `${first.date} 대비` : "기록 부족")}
+        ${renderReportMetric("기록 수", `${logs.length}개`, getReportRange(rangeKey).title)}
+      </div>
+      ${renderReportTable(
+        ["날짜", "체중", "식욕", "메모"],
+        logs
+          .slice()
+          .reverse()
+          .map(
+            (log) => `
+              <tr>
+                <td>${escapeHTML(log.date)}</td>
+                <td>${formatNumber(log.weightKg, 2)} kg</td>
+                <td>${escapeHTML(log.appetite || "-")}</td>
+                <td>${escapeHTML(log.notes || "")}</td>
+              </tr>
+            `
+          ),
+        "선택한 기간의 체중 기록이 없습니다."
+      )}
+    </section>
+  `;
+}
+
+function renderReportSymptoms(cat, rangeKey) {
+  const logs = getReportLogs(
+    state.symptomLogs.filter((log) => log.catId === cat.id),
+    rangeKey
+  );
+  const vomitTotal = logs.reduce((sum, log) => sum + toNumber(log.vomitCount), 0);
+  const diarrheaTotal = logs.reduce((sum, log) => sum + toNumber(log.diarrheaCount), 0);
+  return `
+    <section class="report-section">
+      <h3>증상 기록</h3>
+      <div class="grid three report-metrics">
+        ${renderReportMetric("구토 합계", `${formatNumber(vomitTotal)}회`, getReportRange(rangeKey).title)}
+        ${renderReportMetric("설사 합계", `${formatNumber(diarrheaTotal)}회`, getReportRange(rangeKey).title)}
+        ${renderReportMetric("기록 수", `${logs.length}개`, "보호자 입력 기준")}
+      </div>
+      ${renderReportTable(
+        ["날짜", "구토", "대변/설사", "메모"],
+        logs
+          .slice()
+          .reverse()
+          .map(
+            (log) => `
+              <tr>
+                <td>${escapeHTML(log.date)}</td>
+                <td>${formatNumber(log.vomitCount)}회 · ${escapeHTML(log.vomitColor || "없음")}</td>
+                <td>${formatNumber(log.diarrheaCount)}회 · ${escapeHTML(log.stoolColor || "없음")} · ${escapeHTML(log.stoolState || "정상")}</td>
+                <td>${escapeHTML(log.notes || "")}</td>
+              </tr>
+            `
+          ),
+        "선택한 기간의 증상 기록이 없습니다."
+      )}
+    </section>
+  `;
+}
+
+function renderReportQuestions(questions) {
+  return `
+    <section class="report-section">
+      <h3>병원에 물어볼 질문</h3>
+      ${
+        questions.trim()
+          ? `<div class="report-note">${escapeHTML(questions).replaceAll("\n", "<br />")}</div>`
+          : `<div class="empty">질문을 입력하면 리포트에 함께 표시됩니다.</div>`
+      }
+    </section>
+  `;
+}
+
+function renderReportMetric(label, value, note = "") {
+  return `
+    <div class="metric report-metric">
+      <div class="metric-label">${escapeHTML(label)}</div>
+      <div class="metric-value">${escapeHTML(value)}</div>
+      <div class="metric-note">${escapeHTML(note)}</div>
+    </div>
+  `;
+}
+
+function renderReportTable(headers, rowHtmlList, emptyText) {
+  if (!rowHtmlList.length) return `<div class="empty">${escapeHTML(emptyText)}</div>`;
+  return `
+    <div class="table-wrap report-table-wrap">
+      <table>
+        <thead>
+          <tr>${headers.map((header) => `<th>${escapeHTML(header)}</th>`).join("")}</tr>
+        </thead>
+        <tbody>${rowHtmlList.join("")}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function renderWeightRangeSelector(selectedRange) {
   return `
     <div class="range-selector" role="group" aria-label="체중 그래프 기간">
@@ -3700,7 +4099,8 @@ function handleAction(actionName, element) {
   if (actionName === "admin-approval") {
     const card = element.closest(".admin-user-card");
     const adminNote = card?.querySelector("[name='adminNote']")?.value || "";
-    updateAdminApproval(element.dataset.id, element.dataset.status, adminNote);
+    const catLimit = card?.querySelector("[name='catLimit']")?.value || "";
+    updateAdminApproval(element.dataset.id, element.dataset.status, adminNote, { catLimit });
     return;
   }
 
@@ -3931,6 +4331,30 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "toggle-dashboard-report") {
+    if (!getActiveCat()) {
+      showToast("고양이 프로필을 먼저 등록해주세요.");
+      return;
+    }
+    state.showDashboardReport = !state.showDashboardReport;
+    saveState();
+    render();
+    if (state.showDashboardReport) {
+      requestAnimationFrame(() => {
+        document.querySelector("#dashboard-report-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+    return;
+  }
+
+  if (actionName === "print-report") {
+    const form = document.querySelector('form[data-form="report-settings"]');
+    if (form) applyReportSettingsForm(form);
+    render();
+    requestAnimationFrame(() => window.print());
+    return;
+  }
+
   if (actionName === "delete-account") {
     deleteCurrentAccount();
     return;
@@ -3974,7 +4398,8 @@ async function handleForm(formName, form) {
     const userId = String(data.get("userId") || "");
     const approvalStatus = String(data.get("approvalStatus") || "pending");
     const adminNote = String(data.get("adminNote") || "").trim();
-    updateAdminApproval(userId, approvalStatus, adminNote, { noteOnly: true });
+    const catLimit = String(data.get("catLimit") || "");
+    updateAdminApproval(userId, approvalStatus, adminNote, { noteOnly: true, catLimit });
     return;
   }
 
@@ -3990,6 +4415,13 @@ async function handleForm(formName, form) {
     const approvalStatus = String(data.get("approvalStatus") || "pending");
     const adminNote = String(data.get("adminNote") || "").trim();
     updateAdminBoardApproval(postId, approvalStatus, adminNote, { noteOnly: true });
+    return;
+  }
+
+  if (formName === "report-settings") {
+    applyReportSettingsForm(form);
+    showToast("진료 리포트를 갱신했습니다.");
+    render();
     return;
   }
 
@@ -4134,6 +4566,12 @@ async function handleForm(formName, form) {
     if (!user) return;
     const catId = String(data.get("id") || "");
     const existingCat = state.cats.find((item) => item.id === catId && item.userId === user.id);
+    const catLimit = getUserCatLimit(user);
+    if (!existingCat && getUserCats().length >= catLimit) {
+      showToast(`고양이는 계정당 ${catLimit}마리까지 등록할 수 있습니다. 추가 등록이 필요하면 운영자에게 문의해주세요.`);
+      render();
+      return;
+    }
     const birthYear = normalizeBirthYear(data.get("birthYear"));
     if (!birthYear) {
       showToast("추정 출생연도를 입력해주세요.");
@@ -4517,6 +4955,77 @@ function currentUser() {
 
 function getApprovalStatus(user) {
   return user?.approvalStatus || "approved";
+}
+
+function normalizeCatLimit(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return DEFAULT_CAT_LIMIT_PER_USER;
+  return Math.min(MAX_CAT_LIMIT_PER_USER, Math.max(1, Math.floor(number)));
+}
+
+function getUserCatLimit(user = currentUser()) {
+  return normalizeCatLimit(user?.catLimit);
+}
+
+function normalizeReportSettings(settings = {}) {
+  const sectionKeys = reportSectionOptions.map((section) => section.key);
+  const selectedSections = Array.isArray(settings.sections)
+    ? settings.sections.filter((section) => sectionKeys.includes(section))
+    : [];
+  const range = reportRanges.some((option) => option.key === settings.range) ? settings.range : "3m";
+  return {
+    catId: String(settings.catId || ""),
+    range,
+    sections: selectedSections.length ? selectedSections : sectionKeys,
+    questions: String(settings.questions || "").slice(0, 3000)
+  };
+}
+
+function getReportRange(rangeKey = "3m") {
+  return reportRanges.find((range) => range.key === rangeKey) || reportRanges[0];
+}
+
+function getReportCat(cats = getUserCats(), settings = normalizeReportSettings(state.reportSettings)) {
+  return (
+    cats.find((cat) => cat.id === settings.catId) ||
+    cats.find((cat) => cat.id === state.activeCatId) ||
+    cats[0] ||
+    null
+  );
+}
+
+function applyReportSettingsForm(form) {
+  const data = new FormData(form);
+  const settings = normalizeReportSettings({
+    catId: data.get("catId"),
+    range: data.get("range"),
+    sections: data.getAll("sections").map(String),
+    questions: data.get("questions")
+  });
+  state.reportSettings = settings;
+  if (settings.catId) state.activeCatId = settings.catId;
+  saveState();
+  return settings;
+}
+
+function getReportLogs(logs, rangeKey = "3m") {
+  const sorted = logs
+    .filter((log) => log.date)
+    .slice()
+    .sort((a, b) => `${a.date}T${a.createdAt || ""}`.localeCompare(`${b.date}T${b.createdAt || ""}`));
+  const range = getReportRange(rangeKey);
+  if (!range.days) return sorted;
+  const anchorDate = todayISO();
+  return sorted.filter((log) => {
+    const distance = daysBetween(log.date, anchorDate);
+    return distance >= 0 && distance <= range.days;
+  });
+}
+
+function renderActivityLabel(value) {
+  if (value === "low") return "낮음";
+  if (value === "active") return "높음";
+  return "보통";
 }
 
 function requireUser() {

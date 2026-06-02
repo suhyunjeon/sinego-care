@@ -13,6 +13,8 @@ const host = process.env.HOST || (process.env.PORT ? "0.0.0.0" : "127.0.0.1");
 const databaseUrl = process.env.DATABASE_URL || "";
 const adminToken = process.env.ADMIN_TOKEN || "";
 const maxJsonBytes = 6 * 1024 * 1024;
+const defaultCatLimit = 5;
+const maxCatLimit = 20;
 
 let pool = null;
 let schemaReadyPromise = null;
@@ -55,6 +57,7 @@ async function ensureSchema() {
         approval_status TEXT NOT NULL DEFAULT 'pending'
           CHECK (approval_status IN ('pending', 'approved', 'rejected')),
         admin_note TEXT NOT NULL DEFAULT '',
+        cat_limit INTEGER NOT NULL DEFAULT 5,
         approval_requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
         approved_at TIMESTAMPTZ,
         rejected_at TIMESTAMPTZ,
@@ -111,7 +114,8 @@ async function ensureSchema() {
         ON board_comments (post_id, created_at ASC);
 
       ALTER TABLE app_users
-        ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT '';
+        ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT '',
+        ADD COLUMN IF NOT EXISTS cat_limit INTEGER NOT NULL DEFAULT 5;
       ALTER TABLE board_posts
         ADD COLUMN IF NOT EXISTS approval_status TEXT NOT NULL DEFAULT 'pending',
         ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT '',
@@ -197,6 +201,17 @@ function createToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
+function normalizeCatLimit(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return defaultCatLimit;
+  return Math.min(maxCatLimit, Math.max(1, Math.floor(number)));
+}
+
+function countCatsForUser(stateData, userId) {
+  if (!stateData || !Array.isArray(stateData.cats)) return 0;
+  return stateData.cats.filter((cat) => cat && cat.userId === userId).length;
+}
+
 function publicUser(row) {
   if (!row) return null;
   return {
@@ -208,6 +223,7 @@ function publicUser(row) {
     approvalStatus: row.approval_status,
     approvalRequestedAt: row.approval_requested_at,
     approvedAt: row.approved_at,
+    catLimit: normalizeCatLimit(row.cat_limit),
     createdAt: row.created_at
   };
 }
@@ -399,6 +415,17 @@ async function handlePutState(req, res) {
   if (!context) return;
   const body = await readJson(req);
   const data = body.state && typeof body.state === "object" ? body.state : {};
+  const catLimit = normalizeCatLimit(context.user.cat_limit);
+  const catCount = countCatsForUser(data, context.user.id);
+  if (catCount > catLimit) {
+    sendError(
+      res,
+      400,
+      `고양이는 계정당 ${catLimit}마리까지 등록할 수 있습니다. 추가 등록이 필요하면 운영자에게 문의해주세요.`,
+      "cat_limit_exceeded"
+    );
+    return;
+  }
   await context.db.query(
     `INSERT INTO user_states (user_id, data, updated_at)
      VALUES ($1, $2::jsonb, now())
@@ -644,6 +671,7 @@ async function handleAdminApproval(req, res, userId) {
   const body = await readJson(req);
   const approvalStatus = String(body.approvalStatus || "");
   const adminNote = normalizeText(body.adminNote).slice(0, 1000);
+  const catLimit = normalizeCatLimit(body.catLimit);
   if (!["approved", "rejected", "pending"].includes(approvalStatus)) {
     sendError(res, 400, "approvalStatus는 pending, approved, rejected 중 하나여야 합니다.", "invalid_approval_status");
     return;
@@ -652,12 +680,13 @@ async function handleAdminApproval(req, res, userId) {
     `UPDATE app_users
         SET approval_status = $1,
             admin_note = $2,
+            cat_limit = $3,
             approved_at = CASE WHEN $1 = 'approved' AND approval_status <> 'approved' THEN now() ELSE approved_at END,
             rejected_at = CASE WHEN $1 = 'rejected' AND approval_status <> 'rejected' THEN now() ELSE rejected_at END,
             updated_at = now()
-      WHERE id = $3
+      WHERE id = $4
       RETURNING *`,
-    [approvalStatus, adminNote, userId]
+    [approvalStatus, adminNote, catLimit, userId]
   );
   if (!result.rows[0]) {
     sendError(res, 404, "회원을 찾을 수 없습니다.", "user_not_found");
