@@ -84,6 +84,10 @@ const healthOptions = {
     label: "갑상샘기능항진증",
     detail: "체중감소, 식욕, T4 수치 관리"
   },
+  tumor: {
+    label: "종양/암",
+    detail: "진단명, 항암·수술, 식욕·통증 변화 기록"
+  },
   other: {
     label: "기타/병원 상담 중",
     detail: "진단명 확정 전 임시 표시"
@@ -5493,6 +5497,7 @@ function calorieProfile(cat) {
 
   if (cat.health.includes("diabetes")) notes.push("식사 시간 일정 유지");
   if (cat.health.includes("heart")) notes.push("수액 전 심장상태 확인");
+  if (cat.health.includes("tumor")) notes.push("종양 관리 상담");
 
   return {
     rer,
