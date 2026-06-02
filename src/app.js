@@ -835,12 +835,12 @@ function renderDashboardView() {
       </div>
       <div class="actions">
         <div class="report-help-wrap">
-          <button class="btn report-cta" data-action="toggle-dashboard-report" ${activeCat ? "" : "disabled"}>내 데이터 보내기</button>
+          <button class="btn report-cta" data-action="toggle-dashboard-report" ${activeCat ? "" : "disabled"}>PDF 리포트 만들기</button>
           <button
             class="help-button"
             type="button"
             data-action="toggle-report-help"
-            aria-label="내 데이터 보내기 도움말"
+            aria-label="PDF 리포트 만들기 도움말"
             aria-expanded="${state.showReportHelp}"
           >?</button>
           ${
@@ -3330,7 +3330,7 @@ function renderDashboardReportPanel() {
       <div class="panel-inner">
         <div class="panel-head">
           <div>
-            <h2>내 데이터 보내기</h2>
+            <h2>PDF 리포트 만들기</h2>
             <p>${reportCat ? `${escapeHTML(reportCat.name)} · ${escapeHTML(selectedRange.title)} 진료 상담용 리포트` : "고양이를 먼저 등록하세요"}</p>
           </div>
           <button class="btn small secondary" data-action="toggle-dashboard-report">닫기</button>
