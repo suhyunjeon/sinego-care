@@ -774,21 +774,43 @@ button.metric {
   outline: none;
 }
 
-.help-bubble {
+.speech-bubble {
   position: absolute;
-  top: calc(100% + 10px);
-  right: 0;
+  top: calc(100% + 12px);
+  right: -8px;
   z-index: 4;
-  width: min(320px, calc(100vw - 44px));
-  border: 1px solid #f7c7a6;
+  width: 260px;
+  border: 1px solid #f4b7ae;
   border-radius: 8px;
-  padding: 12px 13px;
-  color: #4a3212;
-  background: #fff8e7;
-  box-shadow: var(--shadow);
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.5;
+  padding: 11px 12px;
+  color: #5a2419;
+  background: #ffffff;
+  box-shadow: 0 14px 30px rgba(103, 48, 38, 0.14);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.speech-bubble::before,
+.speech-bubble::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+}
+
+.speech-bubble::before {
+  top: -9px;
+  border-bottom: 9px solid #f4b7ae;
+}
+
+.speech-bubble::after {
+  top: -7px;
+  border-bottom: 8px solid #ffffff;
 }
 
 .btn {
@@ -1326,10 +1348,16 @@ canvas {
     flex: 1;
   }
 
-  .help-bubble {
+  .speech-bubble {
     right: auto;
     left: 0;
-    width: min(100%, calc(100vw - 32px));
+    width: min(280px, calc(100vw - 32px));
+  }
+
+  .speech-bubble::before,
+  .speech-bubble::after {
+    right: auto;
+    left: 18px;
   }
 
   .panel-inner {
@@ -1359,7 +1387,7 @@ canvas {
   .topbar,
   .site-footer,
   .no-print,
-  .help-bubble,
+  .speech-bubble,
   .toast {
     display: none !important;
   }

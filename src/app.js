@@ -845,8 +845,8 @@ function renderDashboardView() {
           >?</button>
           ${
             state.showReportHelp
-              ? `<div class="help-bubble" role="status">
-                  병원 상담 전에 고양이 기본 정보, 수액·투약 루틴, 혈검, 체중, 증상 기록을 PDF 리포트로 정리해 저장할 수 있습니다.
+              ? `<div class="speech-bubble report-help-bubble" role="tooltip">
+                  병원 상담 전에 케어 기록을 PDF 리포트로 정리해 저장할 수 있어요.
                 </div>`
               : ""
           }
