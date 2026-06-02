@@ -468,7 +468,8 @@ function defaultState() {
       sections: reportSectionOptions.map((section) => section.key),
       questions: ""
     },
-    showDashboardReport: false
+    showDashboardReport: false,
+    showReportHelp: false
   };
 }
 
@@ -497,7 +498,8 @@ function loadState() {
         saved.reportSettings && typeof saved.reportSettings === "object"
           ? normalizeReportSettings(saved.reportSettings)
           : base.reportSettings,
-      showDashboardReport: Boolean(saved.showDashboardReport)
+      showDashboardReport: Boolean(saved.showDashboardReport),
+      showReportHelp: Boolean(saved.showReportHelp)
     };
   } catch {
     return defaultState();
@@ -832,7 +834,23 @@ function renderDashboardView() {
         <p>수액, 투약·영양제, 식사, 체중 기록을 한 화면에서 확인합니다. ${renderCurrentCatText(activeCat)}</p>
       </div>
       <div class="actions">
-        <button class="btn report-cta" data-action="toggle-dashboard-report" ${activeCat ? "" : "disabled"}>내 데이터 보내기</button>
+        <div class="report-help-wrap">
+          <button class="btn report-cta" data-action="toggle-dashboard-report" ${activeCat ? "" : "disabled"}>내 데이터 보내기</button>
+          <button
+            class="help-button"
+            type="button"
+            data-action="toggle-report-help"
+            aria-label="내 데이터 보내기 도움말"
+            aria-expanded="${state.showReportHelp}"
+          >?</button>
+          ${
+            state.showReportHelp
+              ? `<div class="help-bubble" role="status">
+                  병원 상담 전에 고양이 기본 정보, 수액·투약 루틴, 혈검, 체중, 증상 기록을 PDF 리포트로 정리해 저장할 수 있습니다.
+                </div>`
+              : ""
+          }
+        </div>
       </div>
     </section>
 
@@ -1687,7 +1705,16 @@ function renderCatPanel() {
                     <input class="control" id="cat-weight" name="weightKg" type="number" min="0.2" max="20" step="0.01" value="${editingCat?.weightKg ?? ""}" required />
                   </div>
                   <div class="form-field">
-                    <label for="cat-bcs">BCS 1-9</label>
+                    <div class="field-label-row">
+                      <label for="cat-bcs">BCS 1-9</label>
+                      <a
+                        class="field-help-link"
+                        href="https://www.royalcanin.co.uk/body-condition-score/score/cat"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        aria-label="BCS 기준 도움말 새 창으로 열기"
+                      >?</a>
+                    </div>
                     <select class="select" id="cat-bcs" name="bcs">
                       ${range(1, 9)
                         .map((value) => `<option value="${value}" ${value === (editingCat?.bcs || 5) ? "selected" : ""}>${value}</option>`)
@@ -4344,6 +4371,13 @@ function handleAction(actionName, element) {
         document.querySelector("#dashboard-report-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     }
+    return;
+  }
+
+  if (actionName === "toggle-report-help") {
+    state.showReportHelp = !state.showReportHelp;
+    saveState();
+    render();
     return;
   }
 

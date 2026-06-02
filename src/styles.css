@@ -584,6 +584,35 @@ button.metric {
   font-weight: 750;
 }
 
+.field-label-row {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 6px;
+}
+
+.field-help-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid #b9d3ca;
+  border-radius: 999px;
+  color: var(--teal-dark);
+  background: #f0fbf7;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.field-help-link:hover,
+.field-help-link:focus-visible {
+  border-color: var(--teal);
+  background: #e2f7f0;
+  outline: none;
+}
+
 .field-help {
   margin: 0;
   color: var(--muted);
@@ -716,6 +745,50 @@ button.metric {
 
 .dashboard-report-panel {
   margin-top: 16px;
+}
+
+.report-help-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #f7b6ad;
+  border-radius: 999px;
+  color: #9f321f;
+  background: #fff3f1;
+  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(239, 111, 97, 0.14);
+}
+
+.help-button:hover,
+.help-button:focus-visible {
+  border-color: var(--coral);
+  outline: none;
+}
+
+.help-bubble {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  z-index: 4;
+  width: min(320px, calc(100vw - 44px));
+  border: 1px solid #f7c7a6;
+  border-radius: 8px;
+  padding: 12px 13px;
+  color: #4a3212;
+  background: #fff8e7;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .btn {
@@ -1245,6 +1318,20 @@ canvas {
     flex: 1 1 calc(50% - 6px);
   }
 
+  .report-help-wrap {
+    width: 100%;
+  }
+
+  .report-help-wrap .report-cta {
+    flex: 1;
+  }
+
+  .help-bubble {
+    right: auto;
+    left: 0;
+    width: min(100%, calc(100vw - 32px));
+  }
+
   .panel-inner {
     padding: 16px;
   }
@@ -1272,6 +1359,7 @@ canvas {
   .topbar,
   .site-footer,
   .no-print,
+  .help-bubble,
   .toast {
     display: none !important;
   }
