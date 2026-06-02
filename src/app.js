@@ -411,6 +411,7 @@ document.addEventListener("change", (event) => {
   const catSwitcher = event.target.closest("[data-cat-switcher]");
   if (catSwitcher) {
     state.activeCatId = catSwitcher.value;
+    syncReportCatToActive();
     saveState();
     render();
     return;
@@ -3321,7 +3322,11 @@ function renderWeightView() {
 
 function renderDashboardReportPanel() {
   const cats = getUserCats();
-  const settings = normalizeReportSettings(state.reportSettings);
+  const activeCat = getActiveCat();
+  const settings = normalizeReportSettings({
+    ...state.reportSettings,
+    catId: activeCat?.id || state.reportSettings?.catId || ""
+  });
   const reportCat = getReportCat(cats, settings);
   const selectedRange = getReportRange(settings.range);
 
@@ -4359,10 +4364,12 @@ function handleAction(actionName, element) {
   }
 
   if (actionName === "toggle-dashboard-report") {
-    if (!getActiveCat()) {
+    const activeCat = getActiveCat();
+    if (!activeCat) {
       showToast("고양이 프로필을 먼저 등록해주세요.");
       return;
     }
+    syncReportCatToActive(activeCat.id);
     state.showDashboardReport = !state.showDashboardReport;
     saveState();
     render();
@@ -5026,6 +5033,14 @@ function getReportCat(cats = getUserCats(), settings = normalizeReportSettings(s
     cats[0] ||
     null
   );
+}
+
+function syncReportCatToActive(catId = state.activeCatId) {
+  if (!catId) return;
+  state.reportSettings = normalizeReportSettings({
+    ...state.reportSettings,
+    catId
+  });
 }
 
 function applyReportSettingsForm(form) {
