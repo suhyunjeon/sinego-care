@@ -362,6 +362,33 @@ async function handleSignup(req, res) {
   }
 }
 
+async function handleSignupStatus(req, res) {
+  const db = await requireDb(res);
+  if (!db) return;
+  const body = await readJson(req);
+  const email = normalizeEmail(body.email);
+  const naverId = normalizeText(body.naverId);
+
+  if (!email || !naverId) {
+    sendError(res, 400, "이메일과 네이버 ID를 입력해주세요.", "invalid_signup_status");
+    return;
+  }
+
+  const result = await db.query(
+    `SELECT *
+       FROM app_users
+      WHERE email = $1
+        AND lower(naver_id) = lower($2)
+      LIMIT 1`,
+    [email, naverId]
+  );
+  if (!result.rows[0]) {
+    sendError(res, 404, "가입 신청 정보를 찾지 못했습니다.", "signup_not_found");
+    return;
+  }
+  sendJson(res, 200, { ok: true, user: publicUser(result.rows[0]) });
+}
+
 async function handleLogin(req, res) {
   const db = await requireDb(res);
   if (!db) return;
@@ -711,6 +738,10 @@ async function handleApi(req, res, url) {
     }
     if (req.method === "POST" && url.pathname === "/api/signup") {
       await handleSignup(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/signup-status") {
+      await handleSignupStatus(req, res);
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/login") {

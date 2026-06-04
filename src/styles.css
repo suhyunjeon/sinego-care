@@ -505,6 +505,16 @@ button.metric {
   background: #f4fbf8;
 }
 
+.signup-status.is-approved {
+  border-left-color: var(--teal);
+  background: #eef8f5;
+}
+
+.signup-status.is-rejected {
+  border-left-color: var(--coral);
+  background: #fff5f3;
+}
+
 .signup-status-head {
   display: flex;
   align-items: flex-start;

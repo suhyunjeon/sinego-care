@@ -620,6 +620,25 @@ function rememberPendingSignup(user) {
   };
 }
 
+function syncPendingSignupFromUser(user) {
+  const signup = getPendingSignup();
+  if (!signup || !user) return false;
+  const sameId = signup.id && user.id && signup.id === user.id;
+  const sameEmail =
+    signup.email &&
+    user.email &&
+    String(signup.email).trim().toLowerCase() === String(user.email).trim().toLowerCase();
+  if (!sameId && !sameEmail) return false;
+  rememberPendingSignup({
+    ...signup,
+    ...user,
+    approvalRequestedAt: user.approvalRequestedAt || signup.approvalRequestedAt,
+    createdAt: user.createdAt || signup.createdAt
+  });
+  upsertUser(user);
+  return true;
+}
+
 function getPendingSignup() {
   const signup = state.pendingSignup;
   if (!signup || typeof signup !== "object") return null;
@@ -1549,16 +1568,54 @@ async function updateAdminApproval(userId, approvalStatus, adminNote = "", optio
   adminError = "";
   render();
   try {
-    await adminApiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
+    const payload = await adminApiRequest(`/api/admin/users/${encodeURIComponent(userId)}`, {
       method: "PATCH",
       body: { approvalStatus, adminNote, catLimit }
     });
+    if (payload.user && syncPendingSignupFromUser(payload.user)) {
+      saveState();
+    }
     adminLoadedStatus = "";
     showToast(options.noteOnly ? "운영 메모와 등록 한도를 저장했습니다." : `${renderApprovalStatusLabel(approvalStatus)} 처리했습니다.`);
     await loadAdminUsers();
   } catch (error) {
     adminError = error.message || "승인 상태를 변경하지 못했습니다.";
     adminLoading = false;
+    render();
+  }
+}
+
+async function refreshPendingSignupStatus() {
+  const signup = getPendingSignup();
+  if (!signup?.email || !signup?.naverId) {
+    showToast("가입 신청 정보를 다시 입력한 뒤 확인해주세요.");
+    return;
+  }
+  try {
+    const payload = await apiRequest("/api/signup-status", {
+      method: "POST",
+      body: {
+        email: signup.email,
+        naverId: signup.naverId
+      }
+    });
+    if (payload.user) {
+      syncPendingSignupFromUser(payload.user);
+      saveState();
+      const status = payload.user.approvalStatus || "pending";
+      if (status === "approved") {
+        showToast("가입 승인이 완료되었습니다. 이제 로그인할 수 있습니다.");
+      } else if (status === "rejected") {
+        showToast("가입 승인이 보류된 상태입니다. 운영자에게 문의해주세요.");
+      } else {
+        showToast("아직 관리자 승인 대기 중입니다.");
+      }
+      render();
+      return;
+    }
+    showToast("가입 신청 상태를 확인하지 못했습니다.");
+  } catch (error) {
+    showToast(error.message || "가입 신청 상태를 확인하지 못했습니다.");
     render();
   }
 }
@@ -1657,15 +1714,29 @@ function renderSignupForm() {
 
 function renderPendingSignupPanel(signup) {
   const requestedText = signup.approvalRequestedAt ? formatDateTime(signup.approvalRequestedAt) : "접수됨";
+  const status = signup.approvalStatus || "pending";
+  const isApproved = status === "approved";
+  const isRejected = status === "rejected";
+  const statusTitle = isApproved ? "승인이 완료되었습니다" : isRejected ? "가입 승인이 보류되었습니다" : "승인 대기 중입니다";
+  const statusText = isApproved
+    ? "이제 같은 이메일과 비밀번호로 로그인할 수 있습니다."
+    : isRejected
+      ? "운영자 확인이 필요한 상태입니다. 신이고 닉네임과 네이버 ID를 다시 확인해주세요."
+      : "운영자가 신이고 회원 여부를 확인한 뒤 승인합니다.";
+  const statusChip = isApproved
+    ? `<span class="chip blue">승인 완료</span>`
+    : isRejected
+      ? `<span class="chip coral">보류</span>`
+      : `<span class="chip amber">가입 신청 중</span>`;
   return `
-    <div class="signup-status">
+    <div class="signup-status ${isApproved ? "is-approved" : isRejected ? "is-rejected" : ""}">
       <div class="signup-status-head">
         <div>
           <p class="status-kicker">가입 신청 완료</p>
-          <h2>승인 대기 중입니다</h2>
-          <p>운영자가 신이고 회원 여부를 확인한 뒤 승인합니다.</p>
+          <h2>${statusTitle}</h2>
+          <p>${statusText}</p>
         </div>
-        <span class="chip amber">가입 신청 중</span>
+        ${statusChip}
       </div>
       <dl class="signup-summary">
         <div>
@@ -1685,8 +1756,9 @@ function renderPendingSignupPanel(signup) {
           <dd>${escapeHTML(requestedText)}</dd>
         </div>
       </dl>
-      <p class="field-help">승인 완료 후 같은 이메일과 비밀번호로 로그인할 수 있습니다. 기다리는 동안 데모 둘러보기로 기능을 확인할 수 있어요.</p>
+      <p class="field-help">${isApproved ? "오른쪽 로그인 영역에서 비밀번호를 입력해 로그인해주세요." : "승인 완료 후 같은 이메일과 비밀번호로 로그인할 수 있습니다. 기다리는 동안 데모 둘러보기로 기능을 확인할 수 있어요."}</p>
       <div class="actions">
+        <button class="btn primary small" type="button" data-action="refresh-pending-signup">승인 상태 확인</button>
         <button class="btn secondary small" type="button" data-action="edit-pending-signup">신청 정보 다시 입력</button>
       </div>
     </div>
@@ -4183,6 +4255,11 @@ function handleAction(actionName, element) {
     state.editingMedicationPlanId = null;
     resetBoardCache();
     startDemo();
+    return;
+  }
+
+  if (actionName === "refresh-pending-signup") {
+    refreshPendingSignupStatus();
     return;
   }
 
