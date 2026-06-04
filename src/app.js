@@ -827,7 +827,10 @@ function renderDashboardView() {
   const user = currentUser();
   const activeCat = getActiveCat();
   const calorie = activeCat ? calorieProfile(activeCat) : null;
-  const upcoming = user ? getUpcomingCareOccurrences({ limit: 5, catId: activeCat?.id }) : [];
+  const allUpcoming = user ? getUpcomingCareOccurrences({ limit: 60, catId: activeCat?.id }) : [];
+  const todayCare = allUpcoming.filter((item) => item.date === todayISO());
+  const upcoming = allUpcoming.filter((item) => item.date !== todayISO()).slice(0, 5);
+  const nextCare = [...todayCare, ...upcoming].find((item) => !isCareCompleted(item)) || upcoming[0];
   const lastWeight = getActiveCatWeightLogs().at(-1);
   const todayLabel = formatTodayLabel();
 
@@ -874,8 +877,8 @@ function renderDashboardView() {
       </div>
       <div class="metric warn">
         <div class="metric-label">다음 케어</div>
-        <div class="metric-value">${upcoming.length ? upcoming[0].time : "-"}</div>
-        <div class="metric-note">${upcoming.length ? `${upcoming[0].date} · ${escapeHTML(upcoming[0].cat.name)} · ${upcoming[0].kindLabel}` : "등록된 일정 없음"}</div>
+        <div class="metric-value">${nextCare ? escapeHTML(formatCareTimeSlot(nextCare.time).label) : "-"}</div>
+        <div class="metric-note">${nextCare ? `${nextCare.date} · ${escapeHTML(nextCare.cat.name)} · ${escapeHTML(nextCare.plan.name)}` : "등록된 일정 없음"}</div>
       </div>
       <div class="metric hot">
         <div class="metric-label">최근 체중</div>
@@ -883,6 +886,8 @@ function renderDashboardView() {
         <div class="metric-note">${lastWeight ? lastWeight.date : "기록을 추가하세요"}</div>
       </div>
     </section>
+
+    ${renderTodayCareChecklist(todayCare, activeCat)}
 
     <div class="grid sidebar" style="margin-top: 16px">
       <div class="grid">
@@ -898,6 +903,110 @@ function renderDashboardView() {
     </div>
     ${user && activeCat && state.showDashboardReport ? renderDashboardReportPanel() : ""}
   `;
+}
+
+function renderTodayCareChecklist(items, activeCat) {
+  const completedCount = items.filter(isCareCompleted).length;
+  const progress = items.length ? Math.round((completedCount / items.length) * 100) : 0;
+  const visibleItems = items.slice(0, 8);
+  const hiddenItems = items.slice(8);
+
+  return `
+    <section class="panel today-care-panel" aria-label="오늘의 케어 체크리스트">
+      <div class="panel-inner">
+        <div class="today-care-head">
+          <div>
+            <h2>오늘의 케어 체크리스트</h2>
+            <p>${activeCat ? `${escapeHTML(activeCat.name)} 기준으로 오늘 할 일을 순서대로 정리했어요.` : "고양이를 선택하면 오늘 할 일이 표시됩니다."}</p>
+          </div>
+          <div class="care-progress-summary">
+            <strong>${completedCount}/${items.length}</strong>
+            <span>완료</span>
+          </div>
+        </div>
+        <div class="care-progress-bar" aria-hidden="true">
+          <span style="width: ${progress}%"></span>
+        </div>
+        ${
+          items.length
+            ? `<div class="care-checklist">
+                ${visibleItems.map(renderTodayCareTask).join("")}
+              </div>
+              ${
+                hiddenItems.length
+                  ? `<details class="timeline-collapse care-task-collapse">
+                      <summary>
+                        <span>나머지 오늘 할 일 ${hiddenItems.length}개 보기</span>
+                        <span class="timeline-collapse-state">
+                          <span class="closed-label">펼치기</span>
+                          <span class="open-label">접기</span>
+                        </span>
+                      </summary>
+                      <div class="care-checklist">${hiddenItems.map(renderTodayCareTask).join("")}</div>
+                    </details>`
+                  : ""
+              }`
+            : `<div class="empty">
+                오늘 등록된 케어 일정이 없습니다. 수액이나 투약 스케줄을 만들면 이곳에서 바로 체크할 수 있어요.
+              </div>`
+        }
+      </div>
+    </section>
+  `;
+}
+
+function renderTodayCareTask(item) {
+  const done = isCareCompleted(item);
+  const timeSlot = formatCareTimeSlot(item.time);
+  const actionName = done
+    ? item.kind === "medication"
+      ? "undo-medication-complete"
+      : "undo-fluid-complete"
+    : item.kind === "medication"
+      ? "complete-medication"
+      : "complete-fluid";
+  const spacingSensitive = item.kind === "medication" && isSpacingSensitiveMedication(item.plan);
+
+  return `
+    <article class="care-task ${done ? "is-done" : ""}">
+      <div class="care-task-status" aria-hidden="true">${done ? "✓" : ""}</div>
+      <div class="care-task-body">
+        <div class="care-task-title">
+          <strong>${escapeHTML(getCareTaskTitle(item))}</strong>
+          ${done ? `<span class="care-done-stamp">완료</span>` : ""}
+        </div>
+        <p>${escapeHTML(getCareTaskDetail(item))}</p>
+        <div class="chips">
+          <span class="chip ${item.kind === "fluid" ? "blue" : "amber"}">${escapeHTML(item.kindLabel)}</span>
+          <span class="chip care-slot ${timeSlot.className}">${escapeHTML(timeSlot.label)}</span>
+          ${item.kind === "medication" ? `<span class="chip">${escapeHTML(item.plan.route)}</span>` : ""}
+          ${spacingSensitive ? `<span class="chip hot">간격 주의</span>` : ""}
+        </div>
+      </div>
+      <button
+        class="btn small ${done ? "secondary" : "primary"}"
+        data-action="${actionName}"
+        data-plan-id="${escapeAttr(item.plan.id)}"
+        data-date="${escapeAttr(item.date)}"
+        data-time="${escapeAttr(item.time)}"
+      >
+        ${done ? "되돌리기" : "했어요"}
+      </button>
+    </article>
+  `;
+}
+
+function getCareTaskTitle(item) {
+  if (item.kind === "fluid") return item.plan.name || "수액";
+  return item.plan.name || "투약";
+}
+
+function getCareTaskDetail(item) {
+  if (item.kind === "fluid") {
+    return `${item.plan.fluidType || "수액"} · ${formatNumber(item.plan.doseMl)} ml${item.plan.notes ? ` · ${item.plan.notes}` : ""}`;
+  }
+  const spacingNote = isSpacingSensitiveMedication(item.plan) ? " · 다른 약과 간격은 병원 지시 우선" : "";
+  return `${item.plan.category}${item.plan.classification ? ` · ${item.plan.classification}` : ""} · ${item.plan.dose}${spacingNote}${item.plan.notes ? ` · ${item.plan.notes}` : ""}`;
 }
 
 function renderCatView() {
@@ -4297,6 +4406,21 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "undo-fluid-complete") {
+    const user = requireUser();
+    if (!user) return;
+    const planId = element.dataset.planId;
+    const date = element.dataset.date;
+    const time = element.dataset.time;
+    state.fluidLogs = state.fluidLogs.filter(
+      (log) => !(log.userId === user.id && log.planId === planId && log.date === date && log.time === time)
+    );
+    saveState();
+    showToast("수액 완료 기록을 되돌렸습니다.");
+    render();
+    return;
+  }
+
   if (actionName === "complete-medication") {
     const user = requireUser();
     if (!user) return;
@@ -4315,6 +4439,21 @@ function handleAction(actionName, element) {
     }
     saveState();
     showToast("투약 완료 기록을 남겼습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "undo-medication-complete") {
+    const user = requireUser();
+    if (!user) return;
+    const planId = element.dataset.planId;
+    const date = element.dataset.date;
+    const time = element.dataset.time;
+    state.medicationLogs = state.medicationLogs.filter(
+      (log) => !(log.userId === user.id && log.planId === planId && log.date === date && log.time === time)
+    );
+    saveState();
+    showToast("투약 완료 기록을 되돌렸습니다.");
     render();
     return;
   }
@@ -5626,6 +5765,27 @@ function isMedicationCompleted(planId, date, time) {
   return state.medicationLogs.some(
     (log) => log.planId === planId && log.date === date && log.time === time
   );
+}
+
+function isCareCompleted(item) {
+  if (!item) return false;
+  if (item.kind === "medication") return isMedicationCompleted(item.plan.id, item.date, item.time);
+  return isFluidCompleted(item.plan.id, item.date, item.time);
+}
+
+function formatCareTimeSlot(time) {
+  const minutes = parseTime(time || "00:00");
+  if (minutes >= 5 * 60 && minutes < 11 * 60) return { label: "오전", className: "morning" };
+  if (minutes >= 11 * 60 && minutes < 15 * 60) return { label: "낮", className: "daytime" };
+  if (minutes >= 15 * 60 && minutes < 18 * 60) return { label: "오후", className: "afternoon" };
+  if (minutes >= 18 * 60 && minutes < 22 * 60) return { label: "저녁", className: "evening" };
+  if (minutes >= 22 * 60 || minutes < 2 * 60) return { label: "밤", className: "night" };
+  return { label: "새벽", className: "dawn" };
+}
+
+function isSpacingSensitiveMedication(plan) {
+  const text = [plan?.name, plan?.category, plan?.classification].filter(Boolean).join(" ");
+  return /흡착|레나메진|바인더/i.test(text);
 }
 
 function drawWeightChart(canvasId, logs) {

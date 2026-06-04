@@ -747,6 +747,139 @@ button.metric {
   margin-top: 16px;
 }
 
+.today-care-panel {
+  margin-top: 16px;
+}
+
+.today-care-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.today-care-head h2 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.today-care-head p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.care-progress-summary {
+  display: grid;
+  justify-items: end;
+  min-width: 76px;
+  color: var(--teal);
+}
+
+.care-progress-summary strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.care-progress-summary span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.care-progress-bar {
+  height: 10px;
+  margin: 16px 0;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e7f0ed;
+}
+
+.care-progress-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--teal), var(--coral));
+  transition: width 180ms ease;
+}
+
+.care-checklist {
+  display: grid;
+  gap: 9px;
+}
+
+.care-task {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.care-task.is-done {
+  border-color: #c3ded5;
+  background: #f7fbf9;
+}
+
+.care-task-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border: 2px solid #cfe3dc;
+  border-radius: 999px;
+  color: #ffffff;
+  background: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.care-task.is-done .care-task-status {
+  border-color: var(--teal);
+  background: var(--teal);
+}
+
+.care-task-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.care-task-title strong {
+  font-size: 16px;
+}
+
+.care-task-body p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.care-done-stamp {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border: 1px solid #a8d7c9;
+  border-radius: 999px;
+  padding: 0 9px;
+  color: var(--teal);
+  background: #eaf6f1;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.care-task-collapse .care-checklist {
+  margin-top: 8px;
+}
+
 .report-help-wrap {
   position: relative;
   display: inline-flex;
@@ -933,6 +1066,42 @@ button.metric {
 .chip.blue {
   background: #e8f0ff;
   color: #1d4ed8;
+}
+
+.chip.hot {
+  background: #ffe6e2;
+  color: #8d251c;
+}
+
+.chip.care-slot {
+  color: #24403d;
+  background: #eef8f5;
+}
+
+.chip.care-slot.morning {
+  background: #fff3d7;
+  color: #70430b;
+}
+
+.chip.care-slot.daytime {
+  background: #e8f0ff;
+  color: #1d4ed8;
+}
+
+.chip.care-slot.afternoon {
+  background: #f0eaff;
+  color: #5b3aa0;
+}
+
+.chip.care-slot.evening {
+  background: #eaf6f1;
+  color: var(--teal);
+}
+
+.chip.care-slot.night,
+.chip.care-slot.dawn {
+  background: #eef2f7;
+  color: #334155;
 }
 
 .empty {
@@ -1317,6 +1486,22 @@ canvas {
 
   .timeline-row {
     grid-template-columns: 1fr;
+  }
+
+  .today-care-head {
+    display: grid;
+  }
+
+  .care-progress-summary {
+    justify-items: start;
+  }
+
+  .care-task {
+    grid-template-columns: 34px minmax(0, 1fr);
+  }
+
+  .care-task .btn {
+    grid-column: 1 / -1;
   }
 
   .admin-search {
