@@ -803,6 +803,7 @@ function renderHeader() {
           <button class="brand-button" type="button" data-tab="dashboard" aria-label="홈으로 이동">
             <img class="brand-logo" src="/assets/logo.svg" alt="신장질환을 이긴 고양이 케어" />
           </button>
+          <p class="brand-origin">신장을 이긴 고양이 네이버카페가 만든 서비스</p>
         </div>
         <nav class="tabs" aria-label="주요 메뉴">
           ${tabs

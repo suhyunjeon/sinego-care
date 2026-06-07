@@ -1,0 +1,271 @@
+{
+  "generatedAt": "2026-06-07T03:47:22.873Z",
+  "baseUrl": "http://127.0.0.1:5176/?v=smoke-2026-06-07",
+  "mode": "local demo, database not connected",
+  "environment": {
+    "appPort": 5176,
+    "database": "not available: local Postgres was not running / inaccessible",
+    "build": "npm run build passed before browser smoke"
+  },
+  "results": [
+    {
+      "id": "auth-01",
+      "title": "비회원 첫 화면과 회원가입/로그인/둘러보기 노출",
+      "status": "pass",
+      "details": "첫 화면에 회원가입, 로그인, 데모 진입이 표시됩니다.",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:46:50.969Z"
+    },
+    {
+      "id": "auth-02",
+      "title": "데모 진입",
+      "status": "pass",
+      "details": "데모 데이터로 대시보드 진입 성공",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:46:52.275Z"
+    },
+    {
+      "id": "dashboard-01",
+      "title": "홈 대시보드 핵심 카드와 날짜",
+      "status": "pass",
+      "details": "오늘의 케어, PDF 리포트, 선택 고양이와 요약 카드 표시",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:46:52.399Z"
+    },
+    {
+      "id": "dashboard-02",
+      "title": "PDF 리포트 패널 토글",
+      "status": "pass",
+      "details": "대시보드에서 PDF 리포트 설정 패널 열림",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:46:53.492Z"
+    },
+    {
+      "id": "dashboard-03",
+      "title": "케어 완료와 되돌리기",
+      "status": "pass",
+      "details": "오늘의 케어 완료/되돌리기 동작 정상",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:46:55.386Z"
+    },
+    {
+      "id": "cats-01",
+      "title": "고양이 프로필 메뉴",
+      "status": "pass",
+      "details": "프로필 목록, 추정 연도, BCS 도움말, 건강상태 옵션 표시",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:46:57.104Z"
+    },
+    {
+      "id": "cats-02",
+      "title": "고양이 수정 모드",
+      "status": "pass",
+      "details": "등록된 고양이 수정 폼 진입 정상",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:46:58.161Z"
+    },
+    {
+      "id": "fluid-01",
+      "title": "수액 스케줄 화면과 수정",
+      "status": "pass",
+      "details": "재검증 통과: 수액 종류, 예정 일정, 등록 계획과 수정 버튼 표시",
+      "screenshot": "20-fluid-recheck.png",
+      "checkedAt": "2026-06-07T03:46:59.927Z",
+      "recheckedAt": "2026-06-07T03:49:26.516Z"
+    },
+    {
+      "id": "fluid-02",
+      "title": "수액 완료와 되돌리기",
+      "status": "pass",
+      "details": "수액 예정 일정 완료/되돌리기 정상",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:01.586Z"
+    },
+    {
+      "id": "med-01",
+      "title": "투약 스케줄 화면과 빠른 선택",
+      "status": "pass",
+      "details": "최종 재검증 통과: 빠른 선택 셀렉트가 이름(오메가3), 종류(영양제), 체크리스트와 동기화됩니다. 직접입력 검증은 현재 값 property 기준으로 확인했습니다.",
+      "screenshot": "23-medication-final-recheck.png",
+      "checkedAt": "2026-06-07T03:47:03.357Z",
+      "recheckedAt": "2026-06-07T03:50:22.529Z"
+    },
+    {
+      "id": "med-02",
+      "title": "투약 수정 모드와 완료 되돌리기",
+      "status": "pass",
+      "details": "투약 계획 수정 진입과 완료/되돌리기 정상",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:06.003Z"
+    },
+    {
+      "id": "symptoms-01",
+      "title": "증상 기록 화면",
+      "status": "pass",
+      "details": "구토/설사 횟수와 색, 증상 기록 목록 표시",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:07.733Z"
+    },
+    {
+      "id": "nutrition-01",
+      "title": "영양 검색과 계산",
+      "status": "pass",
+      "details": "재검증 통과: 식품 검색, DM 분석, 혼합 급여, 간식 칼로리 계산 화면 표시",
+      "screenshot": "21-nutrition-recheck.png",
+      "checkedAt": "2026-06-07T03:47:09.522Z",
+      "recheckedAt": "2026-06-07T03:49:30.299Z"
+    },
+    {
+      "id": "labs-01",
+      "title": "혈검 입력과 그래프 기간",
+      "status": "pass",
+      "details": "신장·전해질, 췌장 fPL, pH/K/Ca/Na와 기간 필터 확인",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:12.109Z"
+    },
+    {
+      "id": "weight-01",
+      "title": "체중 기록과 그래프 기간",
+      "status": "pass",
+      "details": "재검증 통과: 체중 기록, 전체 기간 그래프 필터와 기록 목록 표시",
+      "screenshot": "22-weight-recheck.png",
+      "checkedAt": "2026-06-07T03:47:13.924Z",
+      "recheckedAt": "2026-06-07T03:49:32.359Z"
+    },
+    {
+      "id": "support-01",
+      "title": "후원 안내와 계좌 복사",
+      "status": "pass",
+      "details": "후원 문구와 계좌, 복사 버튼 표시",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:15.675Z"
+    },
+    {
+      "id": "privacy-01",
+      "title": "개인정보/데이터 관리",
+      "status": "pass",
+      "details": "개인정보 처리 안내와 탈퇴 버튼 표시",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:17.425Z"
+    },
+    {
+      "id": "board-01",
+      "title": "자료실 접근 제한",
+      "status": "pass",
+      "details": "데모/비회원에게 자료실 내용이 노출되지 않음",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:19.174Z"
+    },
+    {
+      "id": "admin-01",
+      "title": "관리자 승인 화면",
+      "status": "pass",
+      "details": "가입 신청 승인과 자료실 승인 관리자 패널 표시",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:20.175Z"
+    },
+    {
+      "id": "mobile-01",
+      "title": "모바일 레이아웃과 메뉴 스크롤",
+      "status": "pass",
+      "details": "모바일에서 혈검 메뉴 진입, 활성 탭과 최상단 버튼 확인",
+      "screenshot": "",
+      "checkedAt": "2026-06-07T03:47:22.829Z"
+    }
+  ],
+  "screenshots": [
+    {
+      "fileName": "01-auth-start.png",
+      "title": "회원 시작 화면"
+    },
+    {
+      "fileName": "02-dashboard-desktop.png",
+      "title": "홈 대시보드"
+    },
+    {
+      "fileName": "03-dashboard-report-panel.png",
+      "title": "PDF 리포트 패널"
+    },
+    {
+      "fileName": "04-cats-profile.png",
+      "title": "고양이 프로필"
+    },
+    {
+      "fileName": "06-fluid-schedule.png",
+      "title": "수액 스케줄"
+    },
+    {
+      "fileName": "08-medication-schedule.png",
+      "title": "투약 스케줄"
+    },
+    {
+      "fileName": "09-symptoms.png",
+      "title": "증상 기록"
+    },
+    {
+      "fileName": "11-nutrition.png",
+      "title": "영양 검색과 급여 계산"
+    },
+    {
+      "fileName": "12-labs-trend.png",
+      "title": "혈검·신장수치"
+    },
+    {
+      "fileName": "14-weight-trend.png",
+      "title": "체중 기록"
+    },
+    {
+      "fileName": "15-support.png",
+      "title": "운영비 후원"
+    },
+    {
+      "fileName": "16-privacy.png",
+      "title": "개인정보·데이터 관리"
+    },
+    {
+      "fileName": "17-board-locked.png",
+      "title": "자료실 접근 제한"
+    },
+    {
+      "fileName": "18-admin.png",
+      "title": "관리자 승인 화면"
+    },
+    {
+      "fileName": "19-mobile-labs.png",
+      "title": "모바일 혈검 화면"
+    },
+    {
+      "fileName": "20-fluid-recheck.png",
+      "title": "수액 스케줄 재검증"
+    },
+    {
+      "fileName": "21-nutrition-recheck.png",
+      "title": "영양 계산 재검증"
+    },
+    {
+      "fileName": "22-weight-recheck.png",
+      "title": "체중 그래프 재검증"
+    },
+    {
+      "fileName": "23-medication-final-recheck.png",
+      "title": "투약 빠른 선택 최종 재검증"
+    }
+  ],
+  "recheckedAt": "2026-06-07T03:49:32.359Z",
+  "resultsSummary": {
+    "total": 20,
+    "pass": 20,
+    "fail": 0,
+    "warning": 1,
+    "note": "자료실/관리자 저장 플로우는 로컬 PostgreSQL 미실행으로 API 저장까지는 자동 검증하지 못했고, 화면/권한 제한과 관리자 패널 노출을 확인했습니다.",
+    "screenshots": 19
+  },
+  "warnings": [
+    {
+      "id": "env-01",
+      "title": "로컬 DB 미실행",
+      "details": "Docker daemon/localhost:5432 접근이 불가하여 자료실 글 등록, 댓글 수정/삭제, 관리자 승인 API의 실제 DB 저장 플로우는 이번 자동 스모크에서 제외했습니다. Render 운영 DB 환경에서 별도 확인 권장."
+    }
+  ],
+  "finalizedAt": "2026-06-07T03:50:22.529Z"
+}

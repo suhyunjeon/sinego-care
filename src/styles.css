@@ -78,7 +78,9 @@ a {
 
 .brand {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -101,6 +103,15 @@ a {
   height: auto;
   max-height: 66px;
   flex: 0 0 auto;
+}
+
+.brand-origin {
+  max-width: min(250px, 100%);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
 }
 
 .brand-name {
@@ -1468,6 +1479,11 @@ canvas {
   .brand-logo {
     width: min(210px, 72vw);
     max-height: 58px;
+  }
+
+  .brand-origin {
+    max-width: min(210px, 72vw);
+    font-size: 10px;
   }
 
   .brand-name {
