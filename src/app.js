@@ -120,6 +120,7 @@ const fluidTypeOptions = [
 const vomitColorOptions = ["없음", "투명/거품", "노랑", "사료색", "갈색", "분홍/혈색", "기타"];
 const stoolColorOptions = ["없음", "정상 갈색", "짙은 갈색", "검정", "노랑", "초록", "붉은 혈색", "회색", "기타"];
 const stoolStateOptions = ["정상", "무른변", "설사", "물설사", "변비", "혈변 의심"];
+const boardCategoryOptions = ["신장질환", "식단/영양", "수액", "투약", "검사", "케어팁", "후기/경험"];
 
 const labFieldGroups = [
   {
@@ -387,6 +388,8 @@ render();
 hydrateRemoteState();
 disableServiceWorkerCache();
 
+window.addEventListener("scroll", updateScrollTopButton, { passive: true });
+
 document.addEventListener("click", (event) => {
   const tab = event.target.closest("[data-tab]");
   if (tab) {
@@ -394,6 +397,7 @@ document.addEventListener("click", (event) => {
     state.activeTab = tab.dataset.tab;
     saveState();
     render();
+    scrollPageToTop();
     return;
   }
 
@@ -427,12 +431,21 @@ document.addEventListener("change", (event) => {
   if (event.target.closest("#med-preset-select")) {
     syncMedicationPresetSelect(event.target.form);
   }
+  if (event.target.closest("input[name='presetKeys']")) {
+    syncMedicationPresetCheckboxes(event.target.form);
+  }
+  if (event.target.closest("#med-start")) {
+    syncMedicationDateBounds(event.target.form);
+  }
   if (event.target.closest("#lab-pdf")) {
     handleLabPdfUpload(event.target);
   }
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.closest("#med-name")) {
+    syncMedicationNameInput(event.target.form);
+  }
   if (event.target.closest("#lab-pdf")) {
     handleLabPdfUpload(event.target);
   }
@@ -446,7 +459,10 @@ function defaultState() {
     activeTab: "dashboard",
     activeCatId: null,
     editingCatId: null,
+    editingFluidPlanId: null,
     editingMedicationPlanId: null,
+    editingBoardPostId: null,
+    editingBoardCommentId: null,
     users: [],
     cats: [],
     fluidPlans: [],
@@ -721,6 +737,7 @@ function render() {
       ${renderHeader()}
       <main class="main">${isAdmin ? renderAdminView() : renderView(active)}</main>
       ${renderFooter()}
+      ${renderScrollTopButton()}
       ${toastText ? `<div class="toast" role="status">${escapeHTML(toastText)}</div>` : ""}
     </div>
   `;
@@ -733,6 +750,7 @@ function render() {
 
   requestAnimationFrame(() => {
     syncActiveTabPosition();
+    updateScrollTopButton();
     if (active === "weight") drawWeightChart("weight-chart", getWeightTrendLogs(getActiveCatWeightLogs()));
     if (active === "dashboard") drawWeightChart("dashboard-weight-chart", getActiveCatWeightLogs());
     if (active === "labs") {
@@ -747,6 +765,14 @@ function render() {
   });
 }
 
+function renderScrollTopButton() {
+  return `
+    <button class="scroll-top-button" type="button" data-action="scroll-top" aria-label="최상단으로 이동" title="최상단으로 이동">
+      ↑
+    </button>
+  `;
+}
+
 function syncActiveTabPosition() {
   const activeTab = document.querySelector(".tabs .tab.is-active");
   if (!activeTab) return;
@@ -754,6 +780,18 @@ function syncActiveTabPosition() {
     block: "nearest",
     inline: "center"
   });
+}
+
+function scrollPageToTop() {
+  requestAnimationFrame(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  });
+}
+
+function updateScrollTopButton() {
+  const button = document.querySelector(".scroll-top-button");
+  if (!button) return;
+  button.classList.toggle("is-visible", window.scrollY > 420);
 }
 
 function renderHeader() {
@@ -896,7 +934,7 @@ function renderDashboardView() {
       </div>
       <div class="metric warn">
         <div class="metric-label">다음 케어</div>
-        <div class="metric-value">${nextCare ? escapeHTML(formatCareTimeSlot(nextCare.time).label) : "-"}</div>
+        <div class="metric-value">${nextCare ? escapeHTML(nextCare.time) : "-"}</div>
         <div class="metric-note">${nextCare ? `${nextCare.date} · ${escapeHTML(nextCare.cat.name)} · ${escapeHTML(nextCare.plan.name)}` : "등록된 일정 없음"}</div>
       </div>
       <div class="metric hot">
@@ -997,7 +1035,7 @@ function renderTodayCareTask(item) {
         <p>${escapeHTML(getCareTaskDetail(item))}</p>
         <div class="chips">
           <span class="chip ${item.kind === "fluid" ? "blue" : "amber"}">${escapeHTML(item.kindLabel)}</span>
-          <span class="chip care-slot ${timeSlot.className}">${escapeHTML(timeSlot.label)}</span>
+          <span class="chip care-slot ${timeSlot.className}">${escapeHTML(item.time)}</span>
           ${item.kind === "medication" ? `<span class="chip">${escapeHTML(item.plan.route)}</span>` : ""}
           ${spacingSensitive ? `<span class="chip hot">간격 주의</span>` : ""}
         </div>
@@ -2140,6 +2178,10 @@ function renderFluidView() {
   const plans = user
     ? state.fluidPlans.filter((plan) => plan.userId === user.id && plan.active !== false && (!activeCat || plan.catId === activeCat.id))
     : [];
+  const editingPlan = user
+    ? state.fluidPlans.find((plan) => plan.id === state.editingFluidPlanId && plan.userId === user.id) || null
+    : null;
+  const formCatId = editingPlan?.catId || activeCat?.id;
   const upcoming = user ? getUpcomingOccurrences({ limit: 16, catId: activeCat?.id }) : [];
 
   return `
@@ -2155,63 +2197,69 @@ function renderFluidView() {
         <div class="panel-inner">
           <div class="panel-head">
             <div>
-              <h2>스케줄 만들기</h2>
-              <p>${activeCat ? `${escapeHTML(activeCat.name)} 기준` : "고양이를 먼저 선택하세요"}</p>
+              <h2>${editingPlan ? "스케줄 수정" : "스케줄 만들기"}</h2>
+              <p>${editingPlan ? `${escapeHTML(editingPlan.name)} 계획을 수정합니다.` : activeCat ? `${escapeHTML(activeCat.name)} 기준` : "고양이를 먼저 선택하세요"}</p>
             </div>
+            ${editingPlan ? `<button class="btn small secondary" type="button" data-action="cancel-fluid-edit">새 스케줄</button>` : ""}
           </div>
           <form class="grid" data-form="fluid-plan">
+            <input type="hidden" name="id" value="${escapeAttr(editingPlan?.id || "")}" />
             <div class="form-grid">
               <div class="form-field">
                 <label for="fluid-cat">고양이</label>
                 <select class="select" id="fluid-cat" name="catId" required>
-                  ${renderCatOptions(activeCat?.id)}
+                  ${renderCatOptions(formCatId)}
                 </select>
               </div>
               <div class="form-field">
                 <label for="fluid-name">스케줄명</label>
-                <input class="control" id="fluid-name" name="name" value="피하수액" required />
+                <input class="control" id="fluid-name" name="name" value="${escapeAttr(editingPlan?.name || "피하수액")}" required />
               </div>
               <div class="form-field">
                 <label for="fluid-type">수액 종류</label>
                 <select class="select" id="fluid-type" name="fluidType">
-                  ${renderOptions(fluidTypeOptions)}
+                  ${renderOptions(fluidTypeOptions, editingPlan?.fluidType || fluidTypeOptions[0])}
                 </select>
               </div>
               <div class="form-field">
                 <label for="fluid-dose">1회 ml</label>
-                <input class="control" id="fluid-dose" name="doseMl" type="number" min="1" step="1" inputmode="numeric" required />
+                <input class="control" id="fluid-dose" name="doseMl" type="number" min="1" step="1" inputmode="numeric" value="${escapeAttr(editingPlan?.doseMl || "")}" required />
               </div>
               <div class="form-field">
                 <label for="fluid-times">하루 횟수</label>
                 <select class="select" id="fluid-times" name="timesPerDay">
-                  <option value="1">1회</option>
-                  <option value="2">2회</option>
-                  <option value="3">3회</option>
+                  ${renderNumberOptions([
+                    { value: 1, label: "1회" },
+                    { value: 2, label: "2회" },
+                    { value: 3, label: "3회" }
+                  ], editingPlan?.timesPerDay || 1)}
                 </select>
               </div>
               <div class="form-field">
                 <label for="fluid-days">반복 간격</label>
                 <select class="select" id="fluid-days" name="intervalDays">
-                  <option value="1">매일</option>
-                  <option value="2">이틀마다</option>
-                  <option value="3">3일마다</option>
-                  <option value="7">매주</option>
+                  ${renderNumberOptions([
+                    { value: 1, label: "매일" },
+                    { value: 2, label: "이틀마다" },
+                    { value: 3, label: "3일마다" },
+                    { value: 7, label: "매주" }
+                  ], editingPlan?.intervalDays || 1)}
                 </select>
               </div>
               <div class="form-field">
                 <label for="fluid-time">첫 시간</label>
-                <input class="control" id="fluid-time" name="firstTime" type="time" value="09:00" required />
+                <input class="control" id="fluid-time" name="firstTime" type="time" value="${escapeAttr(editingPlan?.times?.[0] || "09:00")}" required />
               </div>
               <div class="form-field">
                 <label for="fluid-start">시작일</label>
-                <input class="control" id="fluid-start" name="startDate" type="date" value="${todayISO()}" required />
+                <input class="control" id="fluid-start" name="startDate" type="date" value="${escapeAttr(editingPlan?.startDate || todayISO())}" required />
               </div>
               <div class="form-field full">
                 <label for="fluid-note">메모</label>
-                <textarea class="textarea" id="fluid-note" name="notes" placeholder="바늘, 수액팩, 컨디션 메모"></textarea>
+                <textarea class="textarea" id="fluid-note" name="notes" placeholder="바늘, 수액팩, 컨디션 메모">${escapeHTML(editingPlan?.notes || "")}</textarea>
               </div>
             </div>
-            <button class="btn primary" type="submit" ${activeCat ? "" : "disabled"}>스케줄 저장</button>
+            <button class="btn primary" type="submit" ${formCatId ? "" : "disabled"}>${editingPlan ? "스케줄 수정" : "스케줄 저장"}</button>
           </form>
           <div class="notice" style="margin-top: 14px">
             수액량과 빈도는 질환 단계, 심장 상태, 탈수 정도에 따라 달라집니다. 앱은 처방받은 내용을 기록하는 용도로만 사용하세요.
@@ -2237,7 +2285,7 @@ function renderFluidView() {
         <div class="panel-head">
           <div>
             <h2>등록된 수액 계획</h2>
-            <p>사용하지 않는 계획은 삭제할 수 있습니다.</p>
+            <p>계획을 수정하거나 사용하지 않는 계획은 삭제할 수 있습니다.</p>
           </div>
         </div>
         ${
@@ -2252,8 +2300,9 @@ function renderFluidView() {
 
 function renderFluidPlan(plan) {
   const cat = state.cats.find((item) => item.id === plan.catId);
+  const editing = state.editingFluidPlanId === plan.id;
   return `
-    <article class="item">
+    <article class="item ${editing ? "is-active" : ""}">
       <div class="item-head">
         <div>
           <h3>${escapeHTML(plan.name)}</h3>
@@ -2263,7 +2312,10 @@ function renderFluidPlan(plan) {
             ${plan.times.map((time) => `<span class="chip">${time}</span>`).join("")}
           </div>
         </div>
-        <button class="btn small danger" data-action="delete-fluid-plan" data-id="${plan.id}">삭제</button>
+        <div class="actions">
+          <button class="btn small ${editing ? "primary" : "secondary"}" data-action="edit-fluid-plan" data-id="${escapeAttr(plan.id)}">${editing ? "수정 중" : "수정"}</button>
+          <button class="btn small danger" data-action="delete-fluid-plan" data-id="${escapeAttr(plan.id)}">삭제</button>
+        </div>
       </div>
     </article>
   `;
@@ -2280,13 +2332,12 @@ function renderOccurrence(item) {
       </div>
       <button
         class="btn small ${done ? "secondary" : "primary"}"
-        data-action="complete-fluid"
-        data-plan-id="${item.plan.id}"
-        data-date="${item.date}"
-        data-time="${item.time}"
-        ${done ? "disabled" : ""}
+        data-action="${done ? "undo-fluid-complete" : "complete-fluid"}"
+        data-plan-id="${escapeAttr(item.plan.id)}"
+        data-date="${escapeAttr(item.date)}"
+        data-time="${escapeAttr(item.time)}"
       >
-        ${done ? "완료됨" : "완료"}
+        ${done ? "되돌리기" : "완료"}
       </button>
     </div>
   `;
@@ -2334,26 +2385,7 @@ function renderMedicationView() {
               </div>
               <div class="form-field">
                 <label for="med-name">이름</label>
-                <input class="control" id="med-name" name="name" value="${escapeAttr(editingPlan?.name || "")}" placeholder="직접 입력 또는 아래에서 선택" list="med-name-presets" />
-                <datalist id="med-name-presets">
-                  <option value="인흡착제"></option>
-                  <option value="레나메진"></option>
-                  <option value="유산균"></option>
-                  <option value="오메가3"></option>
-                  <option value="항구토제"></option>
-                  <option value="췌장보조제"></option>
-                  <option value="칼륨보조제"></option>
-                  <option value="코발라민"></option>
-                  <option value="아미나바스트"></option>
-                  <option value="간보조제"></option>
-                  <option value="식이섬유"></option>
-                  <option value="처방약(병원)"></option>
-                  <option value="혈압약"></option>
-                  <option value="단백뇨약"></option>
-                  <option value="식욕촉진제"></option>
-                  <option value="빈혈약"></option>
-                  <option value="변비약"></option>
-                </datalist>
+                <input class="control" id="med-name" name="name" value="${escapeAttr(editingPlan?.name || "")}" placeholder="직접 입력" autocomplete="off" />
               </div>
               <div class="form-field">
                 <label for="med-category">종류</label>
@@ -2421,7 +2453,7 @@ function renderMedicationView() {
               </div>
               <div class="form-field">
                 <label for="med-end">종료일</label>
-                <input class="control" id="med-end" name="endDate" type="date" value="${escapeAttr(editingPlan?.endDate || "")}" />
+                <input class="control" id="med-end" name="endDate" type="date" min="${escapeAttr(editingPlan?.startDate || todayISO())}" value="${escapeAttr(editingPlan?.endDate || "")}" />
               </div>
               <div class="form-field full">
                 <label for="med-note">메모</label>
@@ -2548,13 +2580,12 @@ function renderMedicationOccurrence(item) {
       </div>
       <button
         class="btn small ${done ? "secondary" : "primary"}"
-        data-action="complete-medication"
-        data-plan-id="${item.plan.id}"
-        data-date="${item.date}"
-        data-time="${item.time}"
-        ${done ? "disabled" : ""}
+        data-action="${done ? "undo-medication-complete" : "complete-medication"}"
+        data-plan-id="${escapeAttr(item.plan.id)}"
+        data-date="${escapeAttr(item.date)}"
+        data-time="${escapeAttr(item.time)}"
       >
-        ${done ? "완료됨" : "완료"}
+        ${done ? "되돌리기" : "완료"}
       </button>
     </div>
   `;
@@ -3980,13 +4011,7 @@ function renderBoardView() {
               <div class="form-field">
                 <label for="post-category">분류</label>
                 <select class="select" id="post-category" name="category">
-                  <option>신장질환</option>
-                  <option>식단/영양</option>
-                  <option>수액</option>
-                  <option>투약</option>
-                  <option>검사</option>
-                  <option>케어팁</option>
-                  <option>후기/경험</option>
+                  ${renderBoardCategoryOptions()}
                 </select>
               </div>
               <div class="form-field">
@@ -4066,11 +4091,12 @@ function renderBoardLockedView(user) {
 
 function renderPostItem(post) {
   const user = currentUser();
-  const canDelete = user && post.userId === user.id;
+  const canManage = user && post.userId === user.id;
+  const isEditing = canManage && state.editingBoardPostId === post.id;
   const comments = Array.isArray(post.comments) ? post.comments : [];
   const status = post.approvalStatus || "approved";
   const isApproved = status === "approved";
-  const showStatus = canDelete || !isApproved;
+  const showStatus = canManage || !isApproved;
   return `
     <article class="item">
       <div class="item-head">
@@ -4078,9 +4104,16 @@ function renderPostItem(post) {
           <h3>${escapeHTML(post.title)}</h3>
           <p>${escapeHTML(post.author)} · ${escapeHTML(post.category)} · ${formatDateTime(post.createdAt)}${post.catName ? ` · ${escapeHTML(post.catName)}` : ""}</p>
         </div>
-        ${canDelete ? `<button class="btn small danger" data-action="delete-post" data-id="${escapeAttr(post.id)}">삭제</button>` : ""}
+        ${
+          canManage
+            ? `<div class="actions">
+                <button class="btn small ${isEditing ? "primary" : "secondary"}" data-action="${isEditing ? "cancel-post-edit" : "edit-post"}" data-id="${escapeAttr(post.id)}">${isEditing ? "취소" : "수정"}</button>
+                <button class="btn small danger" data-action="delete-post" data-id="${escapeAttr(post.id)}">삭제</button>
+              </div>`
+            : ""
+        }
       </div>
-      <p class="post-body">${escapeHTML(post.body)}</p>
+      ${isEditing ? renderBoardPostEditForm(post) : `<p class="post-body">${escapeHTML(post.body)}</p>`}
       <div class="chips">
         ${showStatus ? `<span class="chip ${isApproved ? "blue" : status === "rejected" ? "coral" : "amber"}">${renderBoardStatusLabel(status)}</span>` : ""}
         <span class="chip">${escapeHTML(post.category)}</span>
@@ -4088,27 +4121,93 @@ function renderPostItem(post) {
       </div>
       ${
         isApproved
-          ? `${comments
-              .map(
-                (comment) => `
-                  <div class="comment">
-                    <strong>${escapeHTML(comment.author)}</strong>
-                    <span> · ${formatDateTime(comment.createdAt)}</span>
-                    <div>${escapeHTML(comment.body)}</div>
-                  </div>
-                `
-              )
-              .join("")}
+          ? `${comments.map((comment) => renderBoardComment(comment)).join("")}
             <form class="actions" data-form="comment-add" style="margin-top: 10px">
               <input type="hidden" name="postId" value="${escapeAttr(post.id)}" />
               <label class="sr-only" for="comment-${escapeAttr(post.id)}">의견</label>
               <input class="control" id="comment-${escapeAttr(post.id)}" name="body" placeholder="의견" required ${user ? "" : "disabled"} />
               <button class="btn secondary" type="submit" ${user ? "" : "disabled"}>등록</button>
             </form>`
-          : `<div class="notice" style="margin-top: 10px">${status === "rejected" ? "보류된 자료입니다. 운영자 메모가 있으면 확인 후 다시 정리해주세요." : "관리자 승인 후 다른 회원에게 공개됩니다."}</div>`
+          : `<div class="notice" style="margin-top: 10px">${status === "rejected" ? "보류된 자료입니다. 내용을 수정하면 다시 승인 대기로 접수됩니다." : "관리자 승인 후 다른 회원에게 공개됩니다. 승인 대기 중에도 수정·삭제할 수 있습니다."}</div>`
       }
     </article>
   `;
+}
+
+function renderBoardPostEditForm(post) {
+  return `
+    <form class="grid board-edit-form" data-form="post-edit">
+      <input type="hidden" name="postId" value="${escapeAttr(post.id)}" />
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="post-edit-category-${escapeAttr(post.id)}">분류</label>
+          <select class="select" id="post-edit-category-${escapeAttr(post.id)}" name="category">
+            ${renderBoardCategoryOptions(post.category)}
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="post-edit-cat-${escapeAttr(post.id)}">고양이</label>
+          <input class="control" id="post-edit-cat-${escapeAttr(post.id)}" name="catName" value="${escapeAttr(post.catName || "")}" placeholder="선택 안 함" />
+        </div>
+        <div class="form-field full">
+          <label for="post-edit-title-${escapeAttr(post.id)}">자료 제목</label>
+          <input class="control" id="post-edit-title-${escapeAttr(post.id)}" name="title" value="${escapeAttr(post.title)}" required />
+        </div>
+        <div class="form-field full">
+          <label for="post-edit-body-${escapeAttr(post.id)}">자료 내용 또는 링크</label>
+          <textarea class="textarea" id="post-edit-body-${escapeAttr(post.id)}" name="body" required>${escapeHTML(post.body)}</textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn primary" type="submit">수정 저장</button>
+        <button class="btn secondary" type="button" data-action="cancel-post-edit" data-id="${escapeAttr(post.id)}">취소</button>
+      </div>
+      <p class="field-help">수정 저장 후에는 운영자 재확인을 위해 승인 대기 상태로 전환됩니다.</p>
+    </form>
+  `;
+}
+
+function renderBoardComment(comment) {
+  const user = currentUser();
+  const canManage = user && comment.userId === user.id;
+  const isEditing = canManage && state.editingBoardCommentId === comment.id;
+  const isUpdated = comment.updatedAt && comment.createdAt && String(comment.updatedAt) !== String(comment.createdAt);
+  return `
+    <div class="comment">
+      <div class="comment-head">
+        <div>
+          <strong>${escapeHTML(comment.author)}</strong>
+          <span> · ${formatDateTime(comment.createdAt)}${isUpdated ? " · 수정됨" : ""}</span>
+        </div>
+        ${
+          canManage
+            ? `<div class="actions">
+                <button class="btn small ${isEditing ? "primary" : "secondary"}" data-action="${isEditing ? "cancel-comment-edit" : "edit-comment"}" data-id="${escapeAttr(comment.id)}">${isEditing ? "취소" : "수정"}</button>
+                <button class="btn small danger" data-action="delete-comment" data-id="${escapeAttr(comment.id)}" data-post-id="${escapeAttr(comment.postId)}">삭제</button>
+              </div>`
+            : ""
+        }
+      </div>
+      ${
+        isEditing
+          ? `<form class="grid comment-edit-form" data-form="comment-edit">
+              <input type="hidden" name="commentId" value="${escapeAttr(comment.id)}" />
+              <input type="hidden" name="postId" value="${escapeAttr(comment.postId)}" />
+              <label class="sr-only" for="comment-edit-${escapeAttr(comment.id)}">의견 수정</label>
+              <textarea class="textarea" id="comment-edit-${escapeAttr(comment.id)}" name="body" required>${escapeHTML(comment.body)}</textarea>
+              <div class="actions">
+                <button class="btn primary small" type="submit">의견 저장</button>
+                <button class="btn secondary small" type="button" data-action="cancel-comment-edit" data-id="${escapeAttr(comment.id)}">취소</button>
+              </div>
+            </form>`
+          : `<div>${escapeHTML(comment.body)}</div>`
+      }
+    </div>
+  `;
+}
+
+function renderBoardCategoryOptions(selectedValue = boardCategoryOptions[0]) {
+  return renderOptions(boardCategoryOptions, selectedValue || boardCategoryOptions[0]);
 }
 
 function isDemoUser(user = currentUser()) {
@@ -4199,6 +4298,42 @@ async function createBoardPost(formData) {
   }
 }
 
+async function updateBoardPost(formData) {
+  const user = requireBoardUser();
+  if (!user) return;
+  const postId = String(formData.get("postId"));
+  try {
+    const payload = await apiRequest(`/api/board/posts/${encodeURIComponent(postId)}`, {
+      method: "PATCH",
+      auth: true,
+      body: {
+        category: String(formData.get("category")),
+        catName: String(formData.get("catName") || "").trim(),
+        title: String(formData.get("title")).trim(),
+        body: String(formData.get("body")).trim()
+      }
+    });
+    boardPosts = boardPosts.map((post) =>
+      post.id === postId
+        ? {
+            ...post,
+            ...payload.post,
+            comments: Array.isArray(post.comments) ? post.comments : []
+          }
+        : post
+    );
+    state.editingBoardPostId = null;
+    boardLoaded = true;
+    boardError = "";
+    showToast("자료를 수정했습니다. 운영자 승인 대기로 전환되었습니다.");
+    render();
+  } catch (error) {
+    boardError = formatBoardError(error);
+    showToast(error.message || "자료를 수정하지 못했습니다.");
+    render();
+  }
+}
+
 async function deleteBoardPost(postId) {
   const user = requireBoardUser();
   if (!user) return;
@@ -4208,6 +4343,7 @@ async function deleteBoardPost(postId) {
       auth: true
     });
     boardPosts = boardPosts.filter((post) => post.id !== postId);
+    if (state.editingBoardPostId === postId) state.editingBoardPostId = null;
     showToast("자료를 삭제했습니다.");
     render();
   } catch (error) {
@@ -4239,9 +4375,59 @@ async function createBoardComment(formData) {
   }
 }
 
+async function updateBoardComment(formData) {
+  const user = requireBoardUser();
+  if (!user) return;
+  const commentId = String(formData.get("commentId"));
+  const postId = String(formData.get("postId"));
+  try {
+    const payload = await apiRequest(`/api/board/comments/${encodeURIComponent(commentId)}`, {
+      method: "PATCH",
+      auth: true,
+      body: { body: String(formData.get("body")).trim() }
+    });
+    const post = boardPosts.find((item) => item.id === postId);
+    if (post) {
+      post.comments = (Array.isArray(post.comments) ? post.comments : []).map((comment) =>
+        comment.id === commentId ? payload.comment : comment
+      );
+    }
+    state.editingBoardCommentId = null;
+    showToast("의견을 수정했습니다.");
+    render();
+  } catch (error) {
+    boardError = formatBoardError(error);
+    showToast(error.message || "의견을 수정하지 못했습니다.");
+    render();
+  }
+}
+
+async function deleteBoardComment(commentId, postId) {
+  const user = requireBoardUser();
+  if (!user) return;
+  try {
+    await apiRequest(`/api/board/comments/${encodeURIComponent(commentId)}`, {
+      method: "DELETE",
+      auth: true
+    });
+    const post = boardPosts.find((item) => item.id === postId);
+    if (post) {
+      post.comments = (Array.isArray(post.comments) ? post.comments : []).filter((comment) => comment.id !== commentId);
+    }
+    if (state.editingBoardCommentId === commentId) state.editingBoardCommentId = null;
+    showToast("의견을 삭제했습니다.");
+    render();
+  } catch (error) {
+    boardError = formatBoardError(error);
+    showToast(error.message || "의견을 삭제하지 못했습니다.");
+    render();
+  }
+}
+
 function handleAction(actionName, element) {
   if (actionName === "logout") {
     state.sessionUserId = null;
+    state.editingFluidPlanId = null;
     state.editingMedicationPlanId = null;
     clearAuthToken();
     resetBoardCache();
@@ -4252,6 +4438,7 @@ function handleAction(actionName, element) {
   }
 
   if (actionName === "start-demo") {
+    state.editingFluidPlanId = null;
     state.editingMedicationPlanId = null;
     resetBoardCache();
     startDemo();
@@ -4347,6 +4534,11 @@ function handleAction(actionName, element) {
     return;
   }
 
+  if (actionName === "scroll-top") {
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+    return;
+  }
+
   if (actionName === "select-cat") {
     state.activeCatId = element.dataset.id;
     saveState();
@@ -4408,6 +4600,9 @@ function handleAction(actionName, element) {
     state.weightLogs = state.weightLogs.filter((item) => item.catId !== cat.id);
     if (state.activeCatId === cat.id) state.activeCatId = getUserCats()[0]?.id || null;
     if (state.editingCatId === cat.id) state.editingCatId = null;
+    if (state.editingFluidPlanId && !state.fluidPlans.some((plan) => plan.id === state.editingFluidPlanId)) {
+      state.editingFluidPlanId = null;
+    }
     if (state.editingMedicationPlanId && !state.medicationPlans.some((plan) => plan.id === state.editingMedicationPlanId)) {
       state.editingMedicationPlanId = null;
     }
@@ -4420,8 +4615,26 @@ function handleAction(actionName, element) {
   if (actionName === "delete-fluid-plan") {
     state.fluidPlans = state.fluidPlans.filter((plan) => plan.id !== element.dataset.id);
     state.fluidLogs = state.fluidLogs.filter((log) => log.planId !== element.dataset.id);
+    if (state.editingFluidPlanId === element.dataset.id) state.editingFluidPlanId = null;
     saveState();
     showToast("수액 계획을 삭제했습니다.");
+    render();
+    return;
+  }
+
+  if (actionName === "edit-fluid-plan") {
+    const plan = state.fluidPlans.find((item) => item.id === element.dataset.id);
+    if (!plan) return;
+    state.editingFluidPlanId = plan.id;
+    state.activeCatId = plan.catId;
+    saveState();
+    render();
+    return;
+  }
+
+  if (actionName === "cancel-fluid-edit") {
+    state.editingFluidPlanId = null;
+    saveState();
     render();
     return;
   }
@@ -4433,6 +4646,7 @@ function handleAction(actionName, element) {
     state.activeCatId = plan.catId;
     saveState();
     render();
+    focusMedicationForm();
     return;
   }
 
@@ -4574,7 +4788,40 @@ function handleAction(actionName, element) {
   }
 
   if (actionName === "delete-post") {
+    if (!confirm("이 자료를 삭제할까요?")) return;
     deleteBoardPost(element.dataset.id);
+    return;
+  }
+
+  if (actionName === "edit-post") {
+    state.editingBoardPostId = element.dataset.id;
+    state.editingBoardCommentId = null;
+    render();
+    return;
+  }
+
+  if (actionName === "cancel-post-edit") {
+    state.editingBoardPostId = null;
+    render();
+    return;
+  }
+
+  if (actionName === "edit-comment") {
+    state.editingBoardCommentId = element.dataset.id;
+    state.editingBoardPostId = null;
+    render();
+    return;
+  }
+
+  if (actionName === "cancel-comment-edit") {
+    state.editingBoardCommentId = null;
+    render();
+    return;
+  }
+
+  if (actionName === "delete-comment") {
+    if (!confirm("이 의견을 삭제할까요?")) return;
+    deleteBoardComment(element.dataset.id, element.dataset.postId);
     return;
   }
 
@@ -4770,6 +5017,7 @@ async function handleForm(formName, form) {
       upsertUser(payload.user);
       state.sessionUserId = payload.user.id;
       state.pendingSignup = null;
+      state.editingFluidPlanId = null;
       state.editingMedicationPlanId = null;
       resetBoardCache();
       saveState();
@@ -4814,6 +5062,7 @@ async function handleForm(formName, form) {
     }
     state.sessionUserId = user.id;
     state.pendingSignup = null;
+    state.editingFluidPlanId = null;
     state.editingMedicationPlanId = null;
     resetBoardCache();
     saveState();
@@ -4872,6 +5121,17 @@ async function handleForm(formName, form) {
   if (formName === "fluid-plan") {
     const user = requireUser();
     if (!user) return;
+    const editingPlanId = String(data.get("id") || "");
+    const existingPlan = editingPlanId
+      ? state.fluidPlans.find((plan) => plan.id === editingPlanId && plan.userId === user.id)
+      : null;
+    if (editingPlanId && !existingPlan) {
+      state.editingFluidPlanId = null;
+      saveState();
+      showToast("수정할 수액 계획을 찾지 못했습니다.");
+      render();
+      return;
+    }
     const times = buildTimes(String(data.get("firstTime")), toNumber(data.get("timesPerDay")));
     const doseMl = toNumber(data.get("doseMl"));
     if (doseMl <= 0) {
@@ -4879,8 +5139,7 @@ async function handleForm(formName, form) {
       render();
       return;
     }
-    state.fluidPlans.push({
-      id: uid("fluid"),
+    const planData = {
       userId: user.id,
       catId: String(data.get("catId")),
       name: String(data.get("name")).trim(),
@@ -4891,7 +5150,24 @@ async function handleForm(formName, form) {
       times,
       startDate: String(data.get("startDate")),
       notes: String(data.get("notes") || "").trim(),
-      active: true,
+      active: true
+    };
+    if (existingPlan) {
+      Object.assign(existingPlan, {
+        ...planData,
+        createdAt: existingPlan.createdAt,
+        updatedAt: new Date().toISOString()
+      });
+      state.activeCatId = planData.catId;
+      state.editingFluidPlanId = null;
+      saveState();
+      showToast("수액 스케줄을 수정했습니다.");
+      render();
+      return;
+    }
+    state.fluidPlans.push({
+      id: uid("fluid"),
+      ...planData,
       createdAt: new Date().toISOString()
     });
     saveState();
@@ -4939,11 +5215,34 @@ async function handleForm(formName, form) {
               : manualPreset?.classification || existingPlan.classification || ""
           }
         ]
-      : selectedPresets.length
-        ? selectedPresets
-        : [{ label: manualName, category: String(data.get("category")), classification: manualPreset?.classification || "" }];
-    if (!entries[0].label) {
+      : manualName
+        ? [
+            {
+              label: manualName,
+              category:
+                selectedPreset && manualName === selectedPreset.label
+                  ? selectedPreset.category
+                  : manualPreset?.category || String(data.get("category")),
+              classification:
+                selectedPreset && manualName === selectedPreset.label
+                  ? selectedPreset.classification
+                  : manualPreset?.classification || ""
+            }
+          ]
+        : selectedPresets.length
+          ? selectedPresets
+          : selectedPreset
+            ? [selectedPreset]
+            : [];
+    if (!entries.length || !entries[0].label) {
       showToast("이름을 입력하거나 체크리스트에서 선택해주세요.");
+      render();
+      return;
+    }
+    const startDate = String(data.get("startDate"));
+    const endDate = String(data.get("endDate") || "");
+    if (endDate && endDate < startDate) {
+      showToast("종료일은 시작일 이후로 선택해주세요.");
       render();
       return;
     }
@@ -4955,8 +5254,8 @@ async function handleForm(formName, form) {
       timesPerDay: toNumber(data.get("timesPerDay")),
       intervalDays: toNumber(data.get("intervalDays")),
       times,
-      startDate: String(data.get("startDate")),
-      endDate: String(data.get("endDate") || ""),
+      startDate,
+      endDate,
       notes: String(data.get("notes") || "").trim(),
       active: true
     };
@@ -5203,8 +5502,18 @@ async function handleForm(formName, form) {
     return;
   }
 
+  if (formName === "post-edit") {
+    await updateBoardPost(data);
+    return;
+  }
+
   if (formName === "comment-add") {
     await createBoardComment(data);
+    return;
+  }
+
+  if (formName === "comment-edit") {
+    await updateBoardComment(data);
   }
 }
 
@@ -5426,7 +5735,8 @@ function getMedicationPreset(key) {
 }
 
 function findMedicationPresetByLabel(label) {
-  return medicationPresets.find((preset) => preset.label === label) || null;
+  const normalized = String(label || "").trim();
+  return medicationPresets.find((preset) => preset.label === normalized) || null;
 }
 
 function syncMedicationPresetPanel(form) {
@@ -5450,12 +5760,84 @@ function syncMedicationPresetSelect(form) {
   const category = form.querySelector("#med-category");
   if (!presetSelect || !nameInput || !category) return;
   const preset = getMedicationPreset(presetSelect.value);
-  if (!preset) return;
+  if (!preset) {
+    form.querySelectorAll("input[name='presetKeys']").forEach((checkbox) => {
+      checkbox.checked = false;
+    });
+    return;
+  }
   nameInput.value = preset.label;
   category.value = preset.category;
   syncMedicationPresetPanel(form);
+  form.querySelectorAll("input[name='presetKeys']").forEach((checkbox) => {
+    checkbox.checked = false;
+  });
   const checkbox = form.querySelector(`input[name="presetKeys"][value="${preset.key}"]`);
   if (checkbox) checkbox.checked = true;
+}
+
+function syncMedicationNameInput(form) {
+  if (!form) return;
+  const nameInput = form.querySelector("#med-name");
+  const presetSelect = form.querySelector("#med-preset-select");
+  const category = form.querySelector("#med-category");
+  if (!nameInput || !presetSelect || !category) return;
+  const preset = findMedicationPresetByLabel(nameInput.value);
+  form.querySelectorAll("input[name='presetKeys']").forEach((checkbox) => {
+    checkbox.checked = false;
+  });
+  if (preset) {
+    presetSelect.value = preset.key;
+    category.value = preset.category;
+  } else {
+    presetSelect.value = "";
+  }
+  syncMedicationPresetPanel(form);
+}
+
+function syncMedicationPresetCheckboxes(form) {
+  if (!form) return;
+  const checkedPresets = [...form.querySelectorAll("input[name='presetKeys']:checked")]
+    .map((checkbox) => getMedicationPreset(checkbox.value))
+    .filter(Boolean);
+  const nameInput = form.querySelector("#med-name");
+  const presetSelect = form.querySelector("#med-preset-select");
+  const category = form.querySelector("#med-category");
+  if (!nameInput || !presetSelect || !category) return;
+  if (!checkedPresets.length) {
+    presetSelect.value = "";
+    return;
+  }
+  if (checkedPresets.length === 1) {
+    const preset = checkedPresets[0];
+    nameInput.value = preset.label;
+    presetSelect.value = preset.key;
+    category.value = preset.category;
+  } else {
+    nameInput.value = "";
+    presetSelect.value = "";
+  }
+  syncMedicationPresetPanel(form);
+}
+
+function syncMedicationDateBounds(form) {
+  if (!form) return;
+  const startInput = form.querySelector("#med-start");
+  const endInput = form.querySelector("#med-end");
+  if (!startInput || !endInput) return;
+  endInput.min = startInput.value || "";
+  if (endInput.value && startInput.value && endInput.value < startInput.value) {
+    endInput.value = "";
+  }
+}
+
+function focusMedicationForm() {
+  requestAnimationFrame(() => {
+    const form = document.querySelector("[data-form='medication-plan']");
+    if (!form) return;
+    form.scrollIntoView({ behavior: "smooth", block: "start" });
+    form.querySelector("#med-name")?.focus({ preventScroll: true });
+  });
 }
 
 async function handleLabPdfUpload(input, { force = false } = {}) {
@@ -5852,12 +6234,12 @@ function isCareCompleted(item) {
 
 function formatCareTimeSlot(time) {
   const minutes = parseTime(time || "00:00");
+  if (minutes < 5 * 60) return { label: "새벽", className: "dawn" };
   if (minutes >= 5 * 60 && minutes < 11 * 60) return { label: "오전", className: "morning" };
   if (minutes >= 11 * 60 && minutes < 15 * 60) return { label: "낮", className: "daytime" };
   if (minutes >= 15 * 60 && minutes < 18 * 60) return { label: "오후", className: "afternoon" };
   if (minutes >= 18 * 60 && minutes < 22 * 60) return { label: "저녁", className: "evening" };
-  if (minutes >= 22 * 60 || minutes < 2 * 60) return { label: "밤", className: "night" };
-  return { label: "새벽", className: "dawn" };
+  return { label: "밤", className: "night" };
 }
 
 function isSpacingSensitiveMedication(plan) {
@@ -6410,6 +6792,9 @@ function removeUserData(userId) {
   }
   if (state.editingCatId && !state.cats.some((cat) => cat.id === state.editingCatId)) {
     state.editingCatId = null;
+  }
+  if (state.editingFluidPlanId && !state.fluidPlans.some((plan) => plan.id === state.editingFluidPlanId)) {
+    state.editingFluidPlanId = null;
   }
   if (state.editingMedicationPlanId && !state.medicationPlans.some((plan) => plan.id === state.editingMedicationPlanId)) {
     state.editingMedicationPlanId = null;

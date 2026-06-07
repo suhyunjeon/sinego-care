@@ -101,7 +101,8 @@ async function ensureSchema() {
         user_id TEXT NOT NULL REFERENCES app_users(id) ON DELETE CASCADE,
         author_name TEXT NOT NULL,
         body TEXT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
       );
 
       CREATE INDEX IF NOT EXISTS idx_app_users_approval_status
@@ -121,6 +122,8 @@ async function ensureSchema() {
         ADD COLUMN IF NOT EXISTS admin_note TEXT NOT NULL DEFAULT '',
         ADD COLUMN IF NOT EXISTS approved_at TIMESTAMPTZ,
         ADD COLUMN IF NOT EXISTS rejected_at TIMESTAMPTZ;
+      ALTER TABLE board_comments
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
       CREATE INDEX IF NOT EXISTS idx_board_posts_approval_status
         ON board_posts (approval_status, created_at DESC);
@@ -266,7 +269,8 @@ function boardComment(row) {
     userId: row.user_id,
     author: row.author_name,
     body: row.body,
-    createdAt: row.created_at
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -536,6 +540,40 @@ async function handleBoardPost(req, res, postId) {
   const context = await requireUser(req, res);
   if (!context) return;
 
+  if (req.method === "PATCH") {
+    const body = await readJson(req);
+    const category = normalizeText(body.category).slice(0, 40) || "자료";
+    const catName = normalizeText(body.catName).slice(0, 80);
+    const title = normalizeText(body.title).slice(0, 120);
+    const postBody = normalizeText(body.body).slice(0, 5000);
+    if (!title || !postBody) {
+      sendError(res, 400, "제목과 내용을 입력해주세요.", "invalid_board_post");
+      return;
+    }
+    const result = await context.db.query(
+      `UPDATE board_posts
+          SET category = $1,
+              cat_name = $2,
+              title = $3,
+              body = $4,
+              approval_status = 'pending',
+              admin_note = '',
+              approved_at = NULL,
+              rejected_at = NULL,
+              updated_at = now()
+        WHERE id = $5
+          AND user_id = $6
+        RETURNING *`,
+      [category, catName, title, postBody, postId, context.user.id]
+    );
+    if (!result.rows[0]) {
+      sendError(res, 404, "수정할 수 있는 자료를 찾지 못했습니다.", "board_post_not_found");
+      return;
+    }
+    sendJson(res, 200, { ok: true, post: boardPost(result.rows[0], []) });
+    return;
+  }
+
   if (req.method === "DELETE") {
     const result = await context.db.query(
       "DELETE FROM board_posts WHERE id = $1 AND user_id = $2 RETURNING id",
@@ -550,6 +588,50 @@ async function handleBoardPost(req, res, postId) {
   }
 
   sendError(res, 405, "지원하지 않는 자료 요청입니다.", "method_not_allowed");
+}
+
+async function handleBoardComment(req, res, commentId) {
+  const context = await requireUser(req, res);
+  if (!context) return;
+
+  if (req.method === "PATCH") {
+    const body = await readJson(req);
+    const commentBody = normalizeText(body.body).slice(0, 1000);
+    if (!commentBody) {
+      sendError(res, 400, "의견 내용을 입력해주세요.", "invalid_board_comment");
+      return;
+    }
+    const result = await context.db.query(
+      `UPDATE board_comments
+          SET body = $1,
+              updated_at = now()
+        WHERE id = $2
+          AND user_id = $3
+        RETURNING *`,
+      [commentBody, commentId, context.user.id]
+    );
+    if (!result.rows[0]) {
+      sendError(res, 404, "수정할 수 있는 의견을 찾지 못했습니다.", "board_comment_not_found");
+      return;
+    }
+    sendJson(res, 200, { ok: true, comment: boardComment(result.rows[0]) });
+    return;
+  }
+
+  if (req.method === "DELETE") {
+    const result = await context.db.query(
+      "DELETE FROM board_comments WHERE id = $1 AND user_id = $2 RETURNING id",
+      [commentId, context.user.id]
+    );
+    if (!result.rows[0]) {
+      sendError(res, 404, "삭제할 수 있는 의견을 찾지 못했습니다.", "board_comment_not_found");
+      return;
+    }
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  sendError(res, 405, "지원하지 않는 의견 요청입니다.", "method_not_allowed");
 }
 
 async function handleBoardComments(req, res, postId) {
@@ -767,6 +849,11 @@ async function handleApi(req, res, url) {
     const boardCommentMatch = url.pathname.match(/^\/api\/board\/posts\/([^/]+)\/comments$/);
     if (boardCommentMatch) {
       await handleBoardComments(req, res, decodeURIComponent(boardCommentMatch[1]));
+      return;
+    }
+    const boardSingleCommentMatch = url.pathname.match(/^\/api\/board\/comments\/([^/]+)$/);
+    if (boardSingleCommentMatch) {
+      await handleBoardComment(req, res, decodeURIComponent(boardSingleCommentMatch[1]));
       return;
     }
     const boardPostMatch = url.pathname.match(/^\/api\/board\/posts\/([^/]+)$/);

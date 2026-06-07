@@ -1341,12 +1341,32 @@ canvas {
   white-space: pre-wrap;
 }
 
+.board-edit-form {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 12px;
+  background: #f8fbfa;
+}
+
 .comment {
   border-top: 1px solid var(--line);
   margin-top: 10px;
   padding-top: 10px;
   color: #334844;
   font-size: 13px;
+}
+
+.comment-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.comment-edit-form {
+  margin-top: 8px;
 }
 
 .toast {
@@ -1361,6 +1381,40 @@ canvas {
   background: #123c38;
   box-shadow: 0 16px 42px rgba(0, 0, 0, 0.18);
   font-weight: 750;
+}
+
+.scroll-top-button {
+  position: fixed;
+  right: 20px;
+  bottom: 84px;
+  z-index: 24;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #c9ddd6;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--teal);
+  box-shadow: 0 14px 34px rgba(21, 96, 88, 0.24);
+  font-size: 22px;
+  font-weight: 900;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.scroll-top-button.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.scroll-top-button:focus-visible {
+  outline: 3px solid rgba(239, 111, 97, 0.35);
+  outline-offset: 3px;
 }
 
 .sr-only {
@@ -1512,6 +1566,17 @@ canvas {
 
   .care-task .btn {
     grid-column: 1 / -1;
+  }
+
+  .comment-head {
+    display: grid;
+  }
+
+  .scroll-top-button {
+    right: 14px;
+    bottom: 76px;
+    width: 42px;
+    height: 42px;
   }
 
   .admin-search {
