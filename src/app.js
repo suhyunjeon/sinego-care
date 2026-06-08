@@ -849,7 +849,7 @@ function renderFooter() {
     <footer class="site-footer">
       <p>© 2026 신장질환을 이긴 고양이 케어. All rights reserved.</p>
       <p>운영자: ${escapeHTML(operatorName)}</p>
-      <p>본 서비스는 고양이 환묘 보호자의 기록 관리를 돕기 위한 무료 베타 서비스이며, 수의사의 진료·처방을 대체하지 않습니다.</p>
+      <p>본 서비스는 고양이 환묘 보호자의 기록 관리를 돕기 위한 무료 서비스이며, 수의사의 진료·처방을 대체하지 않습니다.</p>
     </footer>
   `;
 }
@@ -1225,7 +1225,7 @@ function renderPrivacyView() {
           <div class="panel-head">
             <div>
               <h2>개인정보 처리 안내</h2>
-              <p>무료 베타 서비스 운영을 위한 최소 정보만 사용합니다.</p>
+              <p>무료 서비스 운영을 위한 최소 정보만 사용합니다.</p>
             </div>
           </div>
           <div class="privacy-list">

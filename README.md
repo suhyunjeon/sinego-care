@@ -47,7 +47,7 @@ npm run db:down
 
 ## Render 배포
 
-PostgreSQL 연동을 위해 Render Static Site가 아니라 Node Web Service로 배포합니다. `render.yaml`에는 Node 웹 서비스와 Render PostgreSQL 인스턴스가 함께 정의되어 있습니다. 베타 비용을 줄이기 위해 DB는 `free` 플랜으로 두었고, 실제 회원 데이터가 쌓이기 시작하면 유료 플랜과 백업 정책을 검토해야 합니다.
+PostgreSQL 연동을 위해 Render Static Site가 아니라 Node Web Service로 배포합니다. `render.yaml`에는 Node 웹 서비스와 Render PostgreSQL 인스턴스가 함께 정의되어 있습니다. 초기 운영 비용을 줄이기 위해 DB는 `free` 플랜으로 두었고, 실제 회원 데이터가 쌓이기 시작하면 유료 플랜과 백업 정책을 검토해야 합니다.
 
 - Build Command: `npm install && npm run build`
 - Start Command: `npm start`
@@ -93,7 +93,7 @@ curl -X PATCH \
 - 관리자 승인 기반 회원 전용 자료실, 의견
 - 운영비+서버비 후원 안내 메뉴
 - 홈 화면 추가용 PWA manifest
-- 베타테스트 중 빠른 업데이트 확인을 위해 브라우저/오프라인 캐시는 비활성화
+- 빠른 업데이트 확인을 위해 브라우저/오프라인 캐시는 비활성화
 
 ## 중요한 한계
 
